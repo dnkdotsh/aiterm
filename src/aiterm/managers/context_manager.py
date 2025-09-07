@@ -320,31 +320,26 @@ class ContextManager:
             return []
 
         try:
-            # Try to resolve user input as a path.
-            # This will work for relative paths like 'src/utils' or absolute paths.
             input_path = Path(path_str).expanduser().resolve()
-        except (OSError, RuntimeError) as e:
-            # OSError can happen for invalid filenames on Windows.
-            # RuntimeError can happen for deep recursion on some systems.
-            log.warning("Could not resolve detach path '%s': %s", path_str, e)
-            # If path resolution fails, we can still try to match by filename.
-            input_path = None
-
-        paths_to_remove = []
-        if input_path:
-            # Find all attached files that are inside the given path.
+        except (OSError, RuntimeError):
+            # Fallback for simple filenames that aren't valid paths on their own.
+            # We will match by name only in this case.
+            paths_to_remove = [p for p in self.attachments if p.name == path_str]
+            if not paths_to_remove:
+                return []
+        else:
+            # Unified matching: remove if the path is the target OR is inside the target.
             paths_to_remove = [
-                p for p in self.attachments if p.is_relative_to(input_path)
+                p
+                for p in self.attachments
+                if p == input_path or p.is_relative_to(input_path)
             ]
 
-        # If nothing was found by path, it might be because the user just gave a filename
-        # for a file that isn't in the current directory, or resolution failed.
-        # So, fall back to matching by name.
         if not paths_to_remove:
+            # Final fallback if path resolution worked but found no matches (e.g., empty dir)
             paths_to_remove = [p for p in self.attachments if p.name == path_str]
-
-        if not paths_to_remove:
-            return []
+            if not paths_to_remove:
+                return []
 
         for path in paths_to_remove:
             if path in self.attachments:
