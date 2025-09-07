@@ -1,0 +1,14 @@
+{
+  "description": "A clean, high-contrast dark theme.",
+  "prompt_color_user": "\u001b[38;5;111m",
+  "prompt_color_assistant": "\u001b[38;5;121m",
+  "prompt_color_system": "\u001b[38;5;180m",
+  "prompt_color_director": "\u001b[38;5;111m",
+  "style_bottom_toolbar_background": "bg:#212121 fg:#E0E0E0",
+  "style_bottom_toolbar_separator": "fg:#616161",
+  "style_bottom_toolbar_tokens": "fg:#E0E0E0 bold",
+  "style_bottom_toolbar_io": "fg:#E0E0E0",
+  "style_bottom_toolbar_model": "fg:#E0E0E0",
+  "style_bottom_toolbar_persona": "fg:#E0E0E0",
+  "style_bottom_toolbar_live": "fg:#E0E0E0"
+}

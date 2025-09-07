@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aiterm"
+version = "1.0.0"
+authors = [
+  { name="Dank A. Saurus", email="contact@dank.ninja" },
+]
+description = "A flexible and robust command-line interface for interacting with multiple AI models."
+readme = "README.md"
+license = { file="LICENSE" }
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Operating System :: OS Independent",
+    "Environment :: Console",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "requests",
+    "prompt-toolkit",
+    "python-dotenv",
+    "platformdirs",
+]
+
+[project.scripts]
+aiterm = "aiterm.aiterm:main"
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-cov",
+    "pytest-mocker",
+    "pyfakefs",
+]
+dev = [
+    "ruff",
+    "pre-commit",
+]
+
+[tool.pytest.ini_options]
+pythonpath = [
+  "src"
+]
+addopts = "--cov=src/aiterm --cov-report=term-missing"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+aiterm = ["themes/*"]
+"aiterm.docs_src" = ["*.md"]
+
+[tool.coverage.run]
+omit = [
+    "src/aiterm/__init__.py",
+]
