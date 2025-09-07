@@ -26,6 +26,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Optional
 
 # Platform-specific imports for single-character input
 if platform.system() == "Windows":
@@ -46,8 +47,14 @@ from .utils.formatters import (
 from .utils.message_builder import extract_text_from_message
 
 
-def get_single_char(prompt: str = "") -> str:
-    """Gets a single character from standard input without requiring Enter."""
+def get_single_char(prompt: str = "") -> Optional[str]:
+    """
+    Gets a single character from standard input without requiring Enter.
+    Returns None if not running in an interactive TTY.
+    """
+    if not sys.stdin.isatty():
+        return None
+
     if prompt:
         print(prompt, end="", flush=True)
 
@@ -122,7 +129,11 @@ def present_action_menu(title: str, options: dict[str, str]) -> str:
 
     print(" | ".join(menu_parts))
     choice = get_single_char()
-    print()
+    if choice is None:  # Non-interactive fallback
+        raw_choice = input("Select an option (e.g., 'r' for Replay): ")
+        choice = raw_choice.strip().lower()[:1] if raw_choice else ""
+    else:
+        print()
     return choice.lower()
 
 
@@ -168,6 +179,8 @@ def replay_file(file_path: Path) -> None:
         print(f"{SYSTEM_MSG}No conversation history found.{RESET_COLOR}")
         return
 
+    is_interactive = sys.stdin.isatty()
+
     for i, turn_data in enumerate(turns):
         try:
             if "prompt" in turn_data and "response" in turn_data:
@@ -182,14 +195,14 @@ def replay_file(file_path: Path) -> None:
                     color = DIRECTOR_PROMPT if role == "Director" else ASSISTANT_PROMPT
                     print(f"{color}{role}:{RESET_COLOR}\n{text}\n")
 
-            if i < total_turns - 1:
+            if i < total_turns - 1 and is_interactive:
                 prompt_text = (
                     f"-- Turn {i + 1} of {total_turns} -- (Press any key, 'q' to quit)"
                 )
                 print(f"{SYSTEM_MSG}{prompt_text}{RESET_COLOR}", end="\r")
                 choice = get_single_char()
                 print(" " * (len(prompt_text) + 5), end="\r")
-                if choice.lower() == "q":
+                if choice is not None and choice.lower() == "q":
                     break
         except KeyboardInterrupt:
             break
@@ -229,7 +242,12 @@ def delete_file(file_path: Path) -> bool:
     )
     try:
         choice = get_single_char()
-        print()
+        if choice is None:  # Non-interactive fallback
+            raw_choice = input("Confirm deletion (y/N): ")
+            choice = raw_choice.strip().lower()[:1] if raw_choice else ""
+        else:
+            print()
+
         if choice.lower() == "y":
             file_path.unlink()
             print("File deleted.")

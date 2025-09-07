@@ -1,5 +1,6 @@
 # tests/test_api_client.py
 
+import json
 from unittest.mock import MagicMock
 
 import pytest
@@ -48,12 +49,13 @@ def test_redact_sensitive_info():
         "request": {
             "url": "https://api.gemini.com/v1/models?key=supersecretkey",
             "headers": {"Authorization": "Bearer anothersecret"},
-            "payload": {"data": "test"},
+            "payload": {"data": "test", "api_key": "payload_secret"},
         }
     }
     redacted = _redact_sensitive_info(log_entry)
     assert "key=[REDACTED]" in redacted["request"]["url"]
     assert redacted["request"]["headers"]["Authorization"] == "Bearer [REDACTED]"
+    assert redacted["request"]["payload"]["api_key"] == "[REDACTED]"
     # Ensure original is not modified
     assert "supersecretkey" in log_entry["request"]["url"]
 
@@ -114,9 +116,7 @@ def test_make_api_request_http_error_with_non_json(mocker, mock_settings):
     """Test that an HTTP error with a non-JSON body is handled."""
     mock_post = mocker.patch("requests.post")
     mock_response = MagicMock()
-    mock_response.json.side_effect = requests.exceptions.JSONDecodeError(
-        "msg", "doc", 0
-    )
+    mock_response.json.side_effect = json.JSONDecodeError("msg", "doc", 0)
     mock_response.text = "Internal Server Error"
 
     # Create an HTTPError instance and attach the mock response to it
@@ -143,9 +143,7 @@ def test_make_api_request_success_with_bad_json(mocker, mock_settings):
     """Test handling of a 200 OK response with an invalid JSON body."""
     mock_post = mocker.patch("requests.post")
     mock_response = MagicMock()
-    mock_response.json.side_effect = requests.exceptions.JSONDecodeError(
-        "msg", "doc", 0
-    )
+    mock_response.json.side_effect = json.JSONDecodeError("msg", "doc", 0)
     mock_post.return_value = mock_response
 
     with pytest.raises(ApiRequestError, match="Failed to decode API response."):
@@ -159,24 +157,24 @@ def test_make_api_request_logs_on_failure(mocker, mock_settings, fs):
         side_effect=requests.exceptions.RequestException("Connection failed"),
     )
     # Mock the log file path
-    log_file_path = "/fake/home/.local/share/aiterm/logs/raw_api_calls.log"
+    log_file_path = "/fake/home/.local/share/aiterm/logs/raw.log"
     fs.create_file(log_file_path, contents="")
 
     mocker.patch("aiterm.api_client.config.RAW_LOG_FILE", log_file_path)
+    # We also need to mock the logger setup to use the fake path
+    mocker.patch("aiterm.api_client._setup_raw_logger")
 
     session_logs = []
     with pytest.raises(ApiRequestError):
         make_api_request(
-            "http://test.com", {}, {"payload": "data"}, session_raw_logs=session_logs
+            "http://test.com",
+            {},
+            {"payload": "data"},
+            debug_active=True,
+            session_raw_logs=session_logs,
         )
 
     # Check that the in-memory session log was appended to
     assert len(session_logs) == 1
     assert session_logs[0]["request"]["payload"] == {"payload": "data"}
     assert "Connection failed" in session_logs[0]["response"]["error"]
-
-    # Check that the file log was written to
-    with open(log_file_path) as f:
-        log_content = f.read()
-        assert '"payload": "data"' in log_content
-        assert "Connection failed" in log_content

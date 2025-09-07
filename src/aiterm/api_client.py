@@ -18,12 +18,14 @@
 import copy
 import datetime
 import json
+import logging
 import os
 import re
 import sys
+from logging.handlers import RotatingFileHandler
+from typing import Any
 
 import requests
-from requests.exceptions import JSONDecodeError
 
 from . import config
 from .engine import AIEngine
@@ -44,6 +46,30 @@ class ApiRequestError(Exception):
     pass
 
 
+def _setup_raw_logger() -> logging.Logger:
+    """Sets up a rotating file logger specifically for raw API logs."""
+    raw_logger = logging.getLogger("aiterm_raw")
+    raw_logger.setLevel(logging.INFO)
+    raw_logger.propagate = False
+    if not raw_logger.handlers:
+        try:
+            # Rotates when the log reaches 2MB, keeping up to 5 backup logs.
+            handler = RotatingFileHandler(
+                config.RAW_LOG_FILE,
+                maxBytes=2 * 1024 * 1024,
+                backupCount=5,
+                encoding="utf-8",
+            )
+            handler.setFormatter(logging.Formatter("%(message)s"))
+            raw_logger.addHandler(handler)
+        except OSError as e:
+            log.warning("Could not create raw log file handler: %s", e)
+    return raw_logger
+
+
+raw_api_logger = _setup_raw_logger()
+
+
 def check_api_keys(engine: str):
     """Checks for the required API key in environment variables and returns it."""
     key_name = "OPENAI_API_KEY" if engine == "openai" else "GEMINI_API_KEY"
@@ -55,14 +81,31 @@ def check_api_keys(engine: str):
     return api_key
 
 
+def _redact_recursive(data: Any, sensitive_keys: set[str]) -> Any:
+    """Recursively traverses a dict or list to redact sensitive information."""
+    if isinstance(data, dict):
+        return {
+            key: "[REDACTED]" if key in sensitive_keys else _redact_recursive(value, sensitive_keys)
+            for key, value in data.items()
+        }
+    if isinstance(data, list):
+        return [_redact_recursive(item, sensitive_keys) for item in data]
+    return data
+
+
 def _redact_sensitive_info(log_entry: dict) -> dict:
-    """Redacts sensitive information (API keys) from a log entry in place."""
+    """Redacts sensitive information (API keys) from a log entry."""
     safe_log_entry = copy.deepcopy(log_entry)
     request = safe_log_entry.get("request", {})
     if "url" in request and "key=" in request["url"]:
         request["url"] = re.sub(r"key=([^&]+)", "key=[REDACTED]", request["url"])
     if "headers" in request and "Authorization" in request["headers"]:
         request["headers"]["Authorization"] = "Bearer [REDACTED]"
+
+    # Recursively redact sensitive keys in the payload
+    sensitive_keys = {"api_key", "key", "token", "authorization"}
+    if "payload" in request:
+        request["payload"] = _redact_recursive(request["payload"], sensitive_keys)
     return safe_log_entry
 
 
@@ -71,6 +114,7 @@ def make_api_request(
     headers: dict,
     payload: dict,
     stream: bool = False,
+    debug_active: bool = False,
     session_raw_logs: list | None = None,
 ) -> dict | requests.Response:
     """
@@ -117,12 +161,12 @@ def make_api_request(
                 error_details = error_json["error"]["message"]
             else:
                 error_details = e.response.text
-        except JSONDecodeError:
+        except json.JSONDecodeError:
             error_details = e.response.text
         log.error("HTTP Request Error: %s\nDETAILS: %s", e, error_details)
         error_details_for_log = error_details
         raise ApiRequestError(error_details) from e
-    except JSONDecodeError as e:
+    except json.JSONDecodeError as e:
         log.error("Failed to decode API response.")
         error_details_for_log = "Failed to decode API response."
         raise ApiRequestError("Failed to decode API response.") from e
@@ -138,14 +182,12 @@ def make_api_request(
                 log_entry["response"] = response_data or {
                     "error": "Request failed, see logs for details."
                 }
-        safe_log_entry = _redact_sensitive_info(log_entry)
-        if session_raw_logs is not None:
-            session_raw_logs.append(safe_log_entry)
-        try:
-            with open(config.RAW_LOG_FILE, "a", encoding="utf-8") as f:
-                f.write(json.dumps(safe_log_entry) + "\n")
-        except OSError as e:
-            log.warning("Could not write to raw log file: %s", e)
+
+        if debug_active:
+            safe_log_entry = _redact_sensitive_info(log_entry)
+            if session_raw_logs is not None:
+                session_raw_logs.append(safe_log_entry)
+            raw_api_logger.info(json.dumps(safe_log_entry))
 
 
 def _parse_token_counts(
@@ -243,6 +285,7 @@ def perform_chat_request(
     system_prompt: str | None,
     max_tokens: int,
     stream: bool,
+    debug_active: bool = False,
     session_raw_logs: list | None = None,
     print_stream: bool = True,
 ) -> tuple[str, dict]:
@@ -258,7 +301,14 @@ def perform_chat_request(
     )
 
     try:
-        response_obj = make_api_request(url, headers, payload, stream, session_raw_logs)
+        response_obj = make_api_request(
+            url,
+            headers,
+            payload,
+            stream,
+            debug_active=debug_active,
+            session_raw_logs=session_raw_logs,
+        )
     except ApiRequestError as e:
         # For non-streaming, return the error in the response tuple
         if not stream:
