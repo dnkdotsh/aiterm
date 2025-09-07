@@ -11,8 +11,9 @@ import pytest
 import requests
 from aiterm import config  # Import config to access LOG_DIRECTORY
 from aiterm.engine import GeminiEngine, OpenAIEngine
+from aiterm.managers.multichat_manager import MultiChatSession
 from aiterm.managers.session_manager import SessionManager
-from aiterm.session_state import SessionState
+from aiterm.session_state import MultiChatSessionState, SessionState
 from pyfakefs.fake_filesystem_unittest import Patcher
 
 
@@ -67,6 +68,18 @@ def mock_openai_session_state(mock_openai_engine):
 
 
 @pytest.fixture
+def mock_multichat_session_state(mock_openai_engine, mock_gemini_engine):
+    """Provides a MultiChatSessionState instance for testing."""
+    return MultiChatSessionState(
+        openai_engine=mock_openai_engine,
+        gemini_engine=mock_gemini_engine,
+        openai_model="gpt-4o-mini",
+        gemini_model="gemini-1.5-flash",
+        max_tokens=2048,
+    )
+
+
+@pytest.fixture
 def mock_session_manager(mocker, mock_session_state):
     """Provides a mock SessionManager instance (defaulting to Gemini) with a mock context manager."""
     mock_context_manager = mocker.MagicMock()
@@ -88,6 +101,16 @@ def mock_openai_session_manager(mocker, mock_openai_session_state):
     )
     manager.image_workflow = mocker.MagicMock()
     return manager
+
+
+@pytest.fixture
+def mock_multichat_session(mocker, mock_multichat_session_state):
+    """Provides a mock MultiChatSession instance."""
+    # We can pass the real state object to a MagicMock to have it available
+    # as `mock_session.state` while still mocking all methods.
+    mock_session = MagicMock(spec=MultiChatSession)
+    mock_session.state = mock_multichat_session_state
+    return mock_session
 
 
 @pytest.fixture

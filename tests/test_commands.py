@@ -3,10 +3,11 @@
 Tests for the interactive command handlers in aiterm/commands.py.
 """
 
+import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from aiterm import api_client, commands
+from aiterm import api_client, commands, config
 from aiterm.engine import GeminiEngine, OpenAIEngine
 from aiterm.managers.context_manager import Attachment
 from aiterm.personas import Persona
@@ -15,6 +16,7 @@ from aiterm.utils.message_builder import (
     construct_user_message,
     extract_text_from_message,
 )
+from prompt_toolkit.history import InMemoryHistory
 
 
 class TestCommands:
@@ -177,6 +179,63 @@ class TestCommands:
         assert "Attached Text Files: 1 (3.00 B)" in captured.out
         assert "System Prompt: Active" in captured.out
 
+    def test_handle_save_auto_name(self, mocker, mock_session_manager, fake_fs):
+        """Tests that /save with no name calls the AI for a name."""
+        # Use mocker.patch.object to mock the method on the real SessionManager instance
+        mocker.patch.object(
+            mock_session_manager,
+            "_perform_helper_request",
+            return_value=("test_ai_name", {}),
+        )
+        mock_history = InMemoryHistory()
+        commands.handle_save([], mock_session_manager, mock_history)
+        mock_session_manager._perform_helper_request.assert_called_once()
+        saved_file = config.SESSIONS_DIRECTORY / "test_ai_name.json"
+        assert saved_file.exists()
+
+    def test_handle_save_with_flags(self, mock_session_manager, fake_fs):
+        """Tests the --stay and --remember flags for /save."""
+        mock_history = InMemoryHistory()
+        result = commands.handle_save(
+            ["test-session", "--stay", "--remember"], mock_session_manager, mock_history
+        )
+        assert result is False  # --stay returns False to keep session running
+        assert mock_session_manager.state.exit_without_memory is False  # --remember
+        # The filename "test-session" is sanitized to "test_session"
+        saved_file = config.SESSIONS_DIRECTORY / "test_session.json"
+        assert saved_file.exists()
+
+    def test_handle_load_invalid_file(self, mock_session_manager, fake_fs, capsys):
+        """Tests that loading an invalid or malformed JSON fails gracefully."""
+        invalid_file = config.SESSIONS_DIRECTORY / "invalid.json"
+        invalid_file.write_text("this is not json")
+        result = commands.handle_load(["invalid.json"], mock_session_manager)
+        assert result is False
+        captured = capsys.readouterr()
+        assert "Error loading session" in captured.out
+
+    def test_handle_load_multichat_in_single_chat(
+        self, mock_session_manager, fake_fs, capsys
+    ):
+        """Tests that loading a multichat session into a single chat fails."""
+        multichat_file = config.SESSIONS_DIRECTORY / "multi.json"
+        multichat_data = {
+            "session_type": "multichat",
+            "engine_name": "openai",
+            "model": "gpt-4",
+        }
+        multichat_file.write_text(json.dumps(multichat_data))
+        result = commands.handle_load(["multi.json"], mock_session_manager)
+        assert result is False
+        captured = capsys.readouterr()
+        assert "Cannot load a multi-chat session here" in captured.out
+
+    def test_handle_image_delegates_to_workflow(self, mock_session_manager):
+        """Tests that the /image command delegates to the image workflow."""
+        args = ["a", "test", "prompt"]
+        commands.handle_image(args, mock_session_manager)
+        mock_session_manager.image_workflow.run.assert_called_once_with(args)
+
     def test_handle_files(self, mock_session_manager):
         """Tests that /files calls the context manager's list_files method."""
         commands.handle_files([], mock_session_manager)
@@ -326,3 +385,71 @@ class TestCommands:
         assert "[SYSTEM]" in last_message_text
         assert "detached" in last_message_text
         assert "'file.txt'" in last_message_text
+
+
+class TestMultiChatCommands:
+    """Test suite for multi-chat specific slash command handlers."""
+
+    def test_handle_multichat_exit(self, mock_multichat_session):
+        """Tests /exit for multi-chat."""
+        mock_history = InMemoryHistory()
+        result = commands.handle_multichat_exit(
+            ["my-log"], mock_multichat_session, mock_history
+        )
+        assert result is True
+        assert mock_multichat_session.state.custom_log_rename == "my-log"
+
+    def test_handle_multichat_quit(self, mock_multichat_session):
+        """Tests /quit for multi-chat."""
+        mock_history = InMemoryHistory()
+        result = commands.handle_multichat_quit(
+            [], mock_multichat_session, mock_history
+        )
+        assert result is True
+        assert mock_multichat_session.state.force_quit is True
+
+    def test_handle_multichat_help(self, mocker, mock_multichat_session):
+        """Tests /help for multi-chat."""
+        mock_history = InMemoryHistory()
+        mock_display_help = mocker.patch("aiterm.commands.display_help")
+        commands.handle_multichat_help([], mock_multichat_session, mock_history)
+        mock_display_help.assert_called_once_with("multichat")
+
+    def test_handle_multichat_model(self, mock_multichat_session, capsys):
+        """Tests /model for multi-chat."""
+        # Test setting gemini model
+        commands.handle_multichat_model(
+            ["gem", "gemini-pro"], mock_multichat_session, None
+        )
+        assert mock_multichat_session.state.gemini_model == "gemini-pro"
+        captured = capsys.readouterr()
+        assert "Gemini model set to: gemini-pro" in captured.out
+
+        # Test setting openai model
+        commands.handle_multichat_model(
+            ["gpt", "gpt-4-turbo"], mock_multichat_session, None
+        )
+        assert mock_multichat_session.state.openai_model == "gpt-4-turbo"
+        captured = capsys.readouterr()
+        assert "OpenAI model set to: gpt-4-turbo" in captured.out
+
+    def test_handle_multichat_clear(self, mock_multichat_session, mock_prompt_toolkit):
+        """Tests /clear for multi-chat."""
+        mock_multichat_session.state.shared_history = ["some history"]
+        mock_prompt_toolkit["input_queue"].append("proceed")
+        commands.handle_multichat_clear([], mock_multichat_session, None)
+        assert not mock_multichat_session.state.shared_history
+
+    def test_handle_multichat_save(self, mock_multichat_session, fake_fs):
+        """Tests /save for multi-chat."""
+        mock_history = InMemoryHistory()
+        result = commands.handle_multichat_save(
+            ["my-session"], mock_multichat_session, mock_history
+        )
+        assert result is True  # Should exit by default
+        # The filename "my-session" is sanitized to "my_session"
+        saved_file = config.SESSIONS_DIRECTORY / "my_session.json"
+        assert saved_file.exists()
+        with open(saved_file) as f:
+            data = json.load(f)
+            assert data["session_type"] == "multichat"
