@@ -15,6 +15,8 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 import json
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -112,12 +114,30 @@ def save_setting(key: str, value: str) -> tuple[bool, str]:
 
     try:
         _ensure_dir_exists(config.CONFIG_DIR)
-        with open(config.SETTINGS_FILE, "w", encoding="utf-8") as f:
+        # Atomic write: write to a temporary file then rename
+        temp_file_path = None
+        # Use tempfile in the same directory to ensure rename is atomic (on same filesystem)
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=config.CONFIG_DIR,
+            delete=False,
+            prefix=f"{config.SETTINGS_FILE.stem}_",
+            suffix=config.SETTINGS_FILE.suffix,
+        ) as f:
+            temp_file_path = f.name
             json.dump(user_settings_to_save, f, indent=2)
+
+        # The rename operation is atomic on POSIX systems
+        os.rename(temp_file_path, config.SETTINGS_FILE)
+
         settings[key] = converted_value
         return True, f"Setting '{key}' updated to '{converted_value}'."
-    except OSError as e:
+    except (OSError, TypeError) as e:
         log.error("Failed to save settings: %s", e)
+        # Cleanup the temporary file if it still exists on error
+        if temp_file_path and os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
         return False, f"Error saving settings file: {e}"
 
 

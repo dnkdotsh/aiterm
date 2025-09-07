@@ -23,6 +23,8 @@ manipulate the state of a SessionManager instance.
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from dataclasses import asdict, fields
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -35,7 +37,7 @@ from . import api_client, config, prompts, theme_manager, workflows
 from . import personas as persona_manager
 from .engine import get_engine
 from .logger import log
-from .managers.context_manager import Attachment
+from .managers.context_manager import Attachment, ContextManager
 from .session_state import SessionState
 from .settings import save_setting, settings
 from .utils.config_loader import get_default_model_for_engine
@@ -328,14 +330,27 @@ def _save_session_to_file(session: SessionManager, filename: str) -> bool:
         else None
     )
 
+    temp_file_path = None
     try:
-        with open(filepath, "w", encoding="utf-8") as f:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=config.SESSIONS_DIRECTORY,
+            delete=False,
+            prefix=f"{filepath.stem}_",
+            suffix=filepath.suffix,
+        ) as f:
+            temp_file_path = f.name
             json.dump(state_dict, f, indent=2)
+
+        os.rename(temp_file_path, filepath)
         print(f"{SYSTEM_MSG}--> Session saved to: {filepath}{RESET_COLOR}")
         return True
     except (OSError, TypeError) as e:
         log.error("Failed to save session state: %s", e)
         print(f"{SYSTEM_MSG}--> Error saving session: {e}{RESET_COLOR}")
+        if temp_file_path and os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
         return False
 
 
@@ -587,8 +602,6 @@ def handle_persona(args: list[str], session: SessionManager) -> None:
 
             # 2. Add new attachments from the loaded persona
             if new_persona.attachments:
-                from .managers.context_manager import ContextManager
-
                 temp_context = ContextManager(
                     files_arg=new_persona.attachments,
                     memory_enabled=False,
@@ -637,14 +650,27 @@ def _save_multichat_session_to_file(session: MultiChatSession, filename: str) ->
     del state_dict["openai_engine"]
     del state_dict["gemini_engine"]
 
+    temp_file_path = None
     try:
-        with open(filepath, "w", encoding="utf-8") as f:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=config.SESSIONS_DIRECTORY,
+            delete=False,
+            prefix=f"{filepath.stem}_",
+            suffix=filepath.suffix,
+        ) as f:
+            temp_file_path = f.name
             json.dump(state_dict, f, indent=2)
+
+        os.rename(temp_file_path, filepath)
         print(f"{SYSTEM_MSG}--> Multi-chat session saved to: {filepath}{RESET_COLOR}")
         return True
     except (OSError, TypeError) as e:
         log.error("Failed to save multi-chat session state: %s", e)
         print(f"{SYSTEM_MSG}--> Error saving multi-chat session: {e}{RESET_COLOR}")
+        if temp_file_path and os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
         return False
 
 
