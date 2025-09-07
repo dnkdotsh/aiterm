@@ -1,6 +1,6 @@
 # AITERM TODO
 
-Random mix of bugs to fix, features I want, and crazy ideas I might try.
+Random mix of bugs to fix, features I want, and crazy ideas I might try..
 
 ## Stuff That's Actually Broken
 - Model validation when switching engines
