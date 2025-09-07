@@ -90,7 +90,9 @@ def _redact_recursive(data: Any, sensitive_keys: set[str]) -> Any:
     """Recursively traverses a dict or list to redact sensitive information."""
     if isinstance(data, dict):
         return {
-            key: "[REDACTED]" if key in sensitive_keys else _redact_recursive(value, sensitive_keys)
+            key: "[REDACTED]"
+            if key in sensitive_keys
+            else _redact_recursive(value, sensitive_keys)
             for key, value in data.items()
         }
     if isinstance(data, list):

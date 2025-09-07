@@ -26,7 +26,6 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
 
 # Platform-specific imports for single-character input
 if platform.system() == "Windows":
@@ -47,7 +46,7 @@ from .utils.formatters import (
 from .utils.message_builder import extract_text_from_message
 
 
-def get_single_char(prompt: str = "") -> Optional[str]:
+def get_single_char(prompt: str = "") -> str | None:
     """
     Gets a single character from standard input without requiring Enter.
     Returns None if not running in an interactive TTY.

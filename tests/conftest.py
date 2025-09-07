@@ -146,7 +146,9 @@ def mock_prompt_toolkit(mocker):
 
     # Patch prompt in all modules where it might be called during tests
     mocker.patch("aiterm.handlers.prompt", side_effect=_mocked_prompt_side_effect)
-    mocker.patch("aiterm.session_manager.prompt", side_effect=_mocked_prompt_side_effect)
+    mocker.patch(
+        "aiterm.session_manager.prompt", side_effect=_mocked_prompt_side_effect
+    )
 
     return {
         "input_queue": input_queue  # Tests will populate this list
