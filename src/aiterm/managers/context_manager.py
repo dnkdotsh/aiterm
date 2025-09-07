@@ -198,6 +198,11 @@ class ContextManager:
                     self._process_text_file(file_path)
                 elif is_supported_image_file(file_path):
                     self._process_image_file(file_path)
+                elif is_supported_archive_file(file_path):
+                    if file_path.suffix.lower() == ".zip":
+                        self._process_zip_file(file_path, exclusion_paths)
+                    else:
+                        self._process_tar_file(file_path, exclusion_paths)
 
     def refresh_files(self, search_term: str | None) -> list[str]:
         if not self.attachments:

@@ -89,6 +89,8 @@ def mock_session_manager(mocker, mock_session_state):
     )
     # Also mock the image workflow which is initialized inside the manager
     manager.image_workflow = mocker.MagicMock()
+    # Set the default state for the workflow mock to be inactive
+    manager.image_workflow.img_prompt_crafting = False
     return manager
 
 
@@ -100,6 +102,7 @@ def mock_openai_session_manager(mocker, mock_openai_session_state):
         state=mock_openai_session_state, context_manager=mock_context_manager
     )
     manager.image_workflow = mocker.MagicMock()
+    manager.image_workflow.img_prompt_crafting = False
     return manager
 
 
