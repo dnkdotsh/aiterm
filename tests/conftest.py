@@ -5,8 +5,10 @@ Fixtures defined here are automatically available to all test functions.
 """
 
 import logging
+from unittest.mock import MagicMock
 
 import pytest
+import requests
 from aiterm import config  # Import config to access LOG_DIRECTORY
 from aiterm.engine import GeminiEngine, OpenAIEngine
 from aiterm.managers.session_manager import SessionManager
@@ -210,3 +212,17 @@ def mock_config_params():
         "files_arg": [],
         "exclude_arg": [],
     }
+
+
+@pytest.fixture
+def mock_streaming_response_factory():
+    """Factory fixture to create a mock streaming requests.Response object."""
+
+    def _create_mock_response(chunks):
+        response = MagicMock(spec=requests.Response)
+        byte_chunks = [c.encode("utf-8") for c in chunks]
+        response.iter_lines.return_value = iter(byte_chunks)
+        response.status_code = 200
+        return response
+
+    return _create_mock_response

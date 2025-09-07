@@ -5,12 +5,14 @@ from unittest.mock import MagicMock
 
 import pytest
 import requests
+from aiterm import api_client
 from aiterm.api_client import (
     ApiRequestError,
     MissingApiKeyError,
     check_api_keys,
     make_api_request,
 )
+from aiterm.engine import AIEngine
 
 
 @pytest.fixture
@@ -165,3 +167,97 @@ def test_make_api_request_logs_on_failure(mocker, mock_settings, fs):
     assert len(session_logs) == 1
     assert session_logs[0]["request"]["payload"] == {"payload": "data"}
     assert "Connection failed" in session_logs[0]["response"]["error"]
+
+
+def test_parse_token_counts_openai(mock_openai_chat_response):
+    """Tests parsing token counts from an OpenAI response."""
+    p, c, r, t = api_client._parse_token_counts("openai", mock_openai_chat_response)
+    assert p == 10
+    assert c == 20
+    assert r == 0
+    assert t == 30
+
+
+def test_parse_token_counts_gemini(mock_gemini_chat_response):
+    """Tests parsing token counts from a Gemini response."""
+    p, c, r, t = api_client._parse_token_counts("gemini", mock_gemini_chat_response)
+    assert p == 15
+    assert c == 25
+    assert r == 5
+    assert t == 40
+
+
+def test_process_stream_openai(mock_streaming_response_factory):
+    """Tests successful processing of an OpenAI stream."""
+    openai_stream_chunks = [
+        'data: {"choices": [{"delta": {"content": "Hello"}}]}',
+        'data: {"choices": [{"delta": {"content": " "}}]}',
+        'data: {"choices": [{"delta": {"content": "world"}}]}',
+        'data: {"usage": {"prompt_tokens": 5, "completion_tokens": 10, "total_tokens": 15}}',
+        "data: [DONE]",
+    ]
+    mock_response = mock_streaming_response_factory(openai_stream_chunks)
+    full_text, tokens = api_client._process_stream(
+        "openai", mock_response, print_stream=False
+    )
+    assert full_text == "Hello world"
+    assert tokens == {"prompt": 5, "completion": 10, "reasoning": 0, "total": 15}
+
+
+def test_process_stream_gemini(mock_streaming_response_factory):
+    """Tests successful processing of a Gemini stream."""
+    gemini_stream_chunks = [
+        'data: {"candidates": [{"content": {"parts": [{"text": "This "}]}}]}',
+        'data: {"candidates": [{"content": {"parts": [{"text": "is "}]}}]}',
+        'data: {"candidates": [{"content": {"parts": [{"text": "a test."}]}}]}',
+        'data: {"usageMetadata": {"promptTokenCount": 8, "candidatesTokenCount": 12, "cachedContentTokenCount": 2, "totalTokenCount": 22}}',
+    ]
+    mock_response = mock_streaming_response_factory(gemini_stream_chunks)
+    full_text, tokens = api_client._process_stream(
+        "gemini", mock_response, print_stream=False
+    )
+    assert full_text == "This is a test."
+    assert tokens == {"prompt": 8, "completion": 12, "reasoning": 2, "total": 22}
+
+
+def test_process_stream_keyboard_interrupt(mock_streaming_response_factory):
+    """Tests that a KeyboardInterrupt during streaming is handled gracefully."""
+
+    def iter_lines_with_interrupt(*args, **kwargs):
+        yield b'data: {"choices": [{"delta": {"content": "Hello"}}]}'
+        raise KeyboardInterrupt
+
+    mock_response = MagicMock(spec=requests.Response)
+    mock_response.iter_lines.side_effect = iter_lines_with_interrupt
+
+    full_text, tokens = api_client._process_stream(
+        "openai", mock_response, print_stream=False
+    )
+
+    assert full_text == "Hello"
+    assert tokens == {"prompt": 0, "completion": 0, "reasoning": 0, "total": 0}
+
+
+def test_perform_chat_request_streaming_error(mocker):
+    """Tests that a top-level streaming request handles upstream errors."""
+    mocker.patch(
+        "aiterm.api_client.make_api_request",
+        side_effect=ApiRequestError("Stream connection failed"),
+    )
+    mock_engine = MagicMock(spec=AIEngine)
+    mock_engine.name = "openai"
+    mock_engine.api_key = "fake_key"
+    mock_engine.get_chat_url.return_value = "http://fake.url"
+    mock_engine.build_chat_payload.return_value = {}
+
+    response_text, tokens = api_client.perform_chat_request(
+        engine=mock_engine,
+        model="test-model",
+        messages_or_contents=[],
+        system_prompt=None,
+        max_tokens=100,
+        stream=True,
+    )
+
+    assert response_text == ""
+    assert tokens == {}
