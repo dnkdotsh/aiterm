@@ -26,6 +26,7 @@ from logging.handlers import RotatingFileHandler
 from typing import Any
 
 import requests
+from dotenv import load_dotenv
 
 from . import config
 from .engine import AIEngine
@@ -71,7 +72,11 @@ raw_api_logger = _setup_raw_logger()
 
 
 def check_api_keys(engine: str):
-    """Checks for the required API key in environment variables and returns it."""
+    """
+    Checks for the required API key in environment variables, loading the .env
+    file if necessary, and returns the key.
+    """
+    load_dotenv(dotenv_path=config.DOTENV_FILE)
     key_name = "OPENAI_API_KEY" if engine == "openai" else "GEMINI_API_KEY"
     api_key = os.getenv(key_name)
     if not api_key:
@@ -96,16 +101,22 @@ def _redact_recursive(data: Any, sensitive_keys: set[str]) -> Any:
 def _redact_sensitive_info(log_entry: dict) -> dict:
     """Redacts sensitive information (API keys) from a log entry."""
     safe_log_entry = copy.deepcopy(log_entry)
+    sensitive_keys = {"api_key", "key", "token", "authorization"}
+
+    # Redact request
     request = safe_log_entry.get("request", {})
     if "url" in request and "key=" in request["url"]:
         request["url"] = re.sub(r"key=([^&]+)", "key=[REDACTED]", request["url"])
     if "headers" in request and "Authorization" in request["headers"]:
         request["headers"]["Authorization"] = "Bearer [REDACTED]"
-
-    # Recursively redact sensitive keys in the payload
-    sensitive_keys = {"api_key", "key", "token", "authorization"}
     if "payload" in request:
         request["payload"] = _redact_recursive(request["payload"], sensitive_keys)
+
+    # Redact response
+    response = safe_log_entry.get("response")
+    if isinstance(response, dict):  # Handles JSON responses and errors
+        safe_log_entry["response"] = _redact_recursive(response, sensitive_keys)
+
     return safe_log_entry
 
 
