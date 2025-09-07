@@ -20,10 +20,9 @@ from command-line arguments, persona files, and default settings.
 """
 
 import sys
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from .. import config, personas
+from .. import personas
 from ..settings import settings
 
 if TYPE_CHECKING:
@@ -99,18 +98,10 @@ def resolve_config_precedence(args: "argparse.Namespace") -> dict[str, Any]:
     if is_single_shot:
         memory_enabled_for_session = False
 
-    # 5. Combine file attachments from CLI and persona
+    # 5. Get file attachments from CLI. Persona attachments are handled by the
+    # Persona object itself, which should have fully resolved paths provided by
+    # `personas.load_persona`. The handler will combine CLI and persona files.
     files_arg = args.file or []
-    persona_attachments_arg = []
-    if persona and persona.attachments:
-        for p_str in persona.attachments:
-            # Resolve path relative to CONFIG_DIR, but allow absolute/user-expanded paths
-            path = Path(p_str)
-            if path.is_absolute() or p_str.startswith("~"):
-                resolved_path = path.expanduser().resolve()
-            else:
-                resolved_path = (config.CONFIG_DIR / path).resolve()
-            persona_attachments_arg.append(str(resolved_path))
 
     return {
         "engine_name": engine_to_use,
@@ -123,6 +114,5 @@ def resolve_config_precedence(args: "argparse.Namespace") -> dict[str, Any]:
         "session_name": args.session_name,
         "system_prompt_arg": args.system_prompt,
         "files_arg": files_arg,
-        "persona_attachments_arg": persona_attachments_arg,
         "exclude_arg": args.exclude,
     }

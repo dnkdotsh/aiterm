@@ -9,7 +9,8 @@ import logging
 import pytest
 from aiterm import config  # Import config to access LOG_DIRECTORY
 from aiterm.engine import GeminiEngine, OpenAIEngine
-from aiterm.managers.session_manager import SessionState
+from aiterm.managers.session_manager import SessionManager
+from aiterm.session_state import SessionState
 from pyfakefs.fake_filesystem_unittest import Patcher
 
 
@@ -45,6 +46,19 @@ def mock_session_state(mock_openai_engine):
         debug_active=False,
         stream_active=True,
     )
+
+
+@pytest.fixture
+def mock_session_manager(mocker, mock_session_state):
+    """Provides a mock SessionManager instance with a mock context manager."""
+    mock_context_manager = mocker.MagicMock()
+    # Create the session manager with the mock state and mock context manager
+    manager = SessionManager(
+        state=mock_session_state, context_manager=mock_context_manager
+    )
+    # Also mock the image workflow which is initialized inside the manager
+    manager.image_workflow = mocker.MagicMock()
+    return manager
 
 
 @pytest.fixture
@@ -136,7 +150,6 @@ def mock_prompt_toolkit(mocker):
     # Mock sys.stdin.isatty to make prompt_toolkit think it's an interactive terminal.
     mocker.patch("sys.stdin.isatty", return_value=True)
 
-    # Patch prompt_toolkit.prompt where it is USED (in the handlers module).
     def _mocked_prompt_side_effect(message="", **kwargs):
         if not input_queue:
             # When the queue is empty, raise EOFError to simulate the user
@@ -144,11 +157,10 @@ def mock_prompt_toolkit(mocker):
             raise EOFError
         return input_queue.pop(0)
 
-    # Patch prompt in all modules where it might be called during tests
-    mocker.patch("aiterm.handlers.prompt", side_effect=_mocked_prompt_side_effect)
-    mocker.patch(
-        "aiterm.session_manager.prompt", side_effect=_mocked_prompt_side_effect
-    )
+    # Patch prompt where it is USED. The tests that need this are in
+    # `test_commands.py`, and the `prompt` function is imported and called
+    # directly within the `aiterm.commands` module.
+    mocker.patch("aiterm.commands.prompt", side_effect=_mocked_prompt_side_effect)
 
     return {
         "input_queue": input_queue  # Tests will populate this list

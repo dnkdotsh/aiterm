@@ -88,6 +88,7 @@ Interactive Chat Commands:
                     If no name is given, all files are refreshed.
                     Otherwise, refreshes all files containing 'name'.
   /files            List all currently attached text files, sorted by size.
+  /print <filename> Print the content of an attached file to the console.
   /attach <path>    Attach a file or directory to the session context.
   /detach <name>    Detach a file from the context by its filename.
   /save [name] [--stay] [--remember]

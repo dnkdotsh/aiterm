@@ -4,7 +4,7 @@ Unit tests for the AIEngine classes in aiterm/engine.py.
 These tests validate the logic for building API-specific payloads and parsing responses.
 """
 
-import logging  # Import logging to specify levels for record_tuples
+import logging
 from unittest.mock import MagicMock
 
 import pytest
@@ -83,68 +83,31 @@ class TestEngines:
         self, mock_gemini_engine, caplog
     ):
         """Tests parsing of empty or malformed Gemini chat responses."""
-        with caplog.at_level(logging.WARNING):  # Capture logs at WARNING level
-            assert mock_gemini_engine.parse_chat_response({}) == ""
-            # --- PyEvolve Change: Corrected log message string for assertion ---
-            assert (
-                "aiterm",
-                logging.WARNING,
-                "Could not extract Gemini response part or finish reason. Full response: {}",
-            ) in caplog.record_tuples
-            # --- End PyEvolve Change ---
+        test_cases = [
+            ({}, "Could not extract Gemini response part or finish reason"),
+            (
+                {"candidates": []},
+                "Could not parse Gemini response due to unexpected structure",
+            ),
+            (
+                {"candidates": [{"content": {}}]},
+                "Could not extract Gemini response part or finish reason",
+            ),
+            (
+                {"candidates": [{"content": {"parts": []}}]},
+                "Could not extract Gemini response part or finish reason",
+            ),
+            (
+                {"candidates": [{"content": {"parts": [{"not_text": "data"}]}}]},
+                "Could not extract Gemini response part or finish reason",
+            ),
+        ]
 
-        with caplog.at_level(logging.WARNING):
-            assert mock_gemini_engine.parse_chat_response({"candidates": []}) == ""
-            assert (
-                "aiterm",
-                logging.WARNING,
-                "Could not parse Gemini response due to unexpected structure. Full response: {'candidates': []}",
-            ) in caplog.record_tuples
-
-        with caplog.at_level(logging.WARNING):
-            assert (
-                mock_gemini_engine.parse_chat_response(
-                    {"candidates": [{"content": {}}]}
-                )
-                == ""
-            )
-            # --- PyEvolve Change: Corrected log message string for assertion ---
-            assert (
-                "aiterm",
-                logging.WARNING,
-                "Could not extract Gemini response part or finish reason. Full response: {'candidates': [{'content': {}}]}",
-            ) in caplog.record_tuples
-            # --- End PyEvolve Change ---
-
-        with caplog.at_level(logging.WARNING):
-            assert (
-                mock_gemini_engine.parse_chat_response(
-                    {"candidates": [{"content": {"parts": []}}]}
-                )
-                == ""
-            )
-            # --- PyEvolve Change: Corrected log message string for assertion ---
-            assert (
-                "aiterm",
-                logging.WARNING,
-                "Could not extract Gemini response part or finish reason. Full response: {'candidates': [{'content': {'parts': []}}]}",
-            ) in caplog.record_tuples
-            # --- End PyEvolve Change ---
-
-        with caplog.at_level(logging.WARNING):
-            assert (
-                mock_gemini_engine.parse_chat_response(
-                    {"candidates": [{"content": {"parts": [{"not_text": "data"}]}}]}
-                )
-                == ""
-            )
-            # --- PyEvolve Change: Corrected log message string for assertion ---
-            assert (
-                "aiterm",
-                logging.WARNING,
-                "Could not extract Gemini response part or finish reason. Full response: {'candidates': [{'content': {'parts': [{'not_text': 'data'}]}}]}",
-            ) in caplog.record_tuples
-            # --- End PyEvolve Change ---
+        for response_data, expected_log_msg in test_cases:
+            with caplog.at_level(logging.WARNING):
+                caplog.clear()  # Clear logs for each case
+                assert mock_gemini_engine.parse_chat_response(response_data) == ""
+                assert expected_log_msg in caplog.text
 
     def test_openai_fetch_available_models_request_error(
         self, mock_openai_engine, mocker, caplog

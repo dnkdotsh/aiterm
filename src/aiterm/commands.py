@@ -455,6 +455,24 @@ def handle_files(args: list[str], session: SessionManager) -> None:
     session.context_manager.list_files()
 
 
+def handle_print(args: list[str], session: SessionManager) -> None:
+    filename = " ".join(args)
+    if not filename:
+        print(f"{SYSTEM_MSG}--> Usage: /print <filename>{RESET_COLOR}")
+        return
+
+    path_to_print = next(
+        (p for p in session.state.attachments if p.name == filename), None
+    )
+
+    if path_to_print:
+        content = session.state.attachments[path_to_print]
+        print(f"\n{SYSTEM_MSG}--- Content of {filename} ---{RESET_COLOR}\n{content}")
+        print(f"{SYSTEM_MSG}--- End of {filename} ---{RESET_COLOR}")
+    else:
+        print(f"{SYSTEM_MSG}--> No attached file named '{filename}'.{RESET_COLOR}")
+
+
 def handle_attach(args: list[str], session: SessionManager) -> None:
     if not args:
         print(f"{SYSTEM_MSG}--> Usage: /attach <path_to_file_or_dir>{RESET_COLOR}")
@@ -772,6 +790,7 @@ COMMAND_MAP = {
     "/load": handle_load,
     "/refresh": handle_refresh,
     "/files": handle_files,
+    "/print": handle_print,
     "/attach": handle_attach,
     "/detach": handle_detach,
     "/personas": handle_personas,
