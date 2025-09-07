@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import datetime
 import json
-import re
 import shutil
 import sys
 from pathlib import Path
@@ -50,24 +49,7 @@ from .utils.formatters import (
     format_token_string,
 )
 from .utils.message_builder import extract_text_from_message
-
-# Regex for known API key patterns to be redacted from user-facing logs.
-# This is a safety net for accidental pastes, not a foolproof security measure.
-OPENAI_KEY_PATTERN = re.compile(r"sk-(proj-)?\w{20,}")
-GEMINI_KEY_PATTERN = re.compile(r"AIzaSy[A-Za-z0-9\-_]{20,}")
-
-
-def _redact_sensitive_strings(data: Any) -> Any:
-    """Recursively traverses a dict or list to redact sensitive key patterns from string values."""
-    if isinstance(data, dict):
-        return {key: _redact_sensitive_strings(value) for key, value in data.items()}
-    if isinstance(data, list):
-        return [_redact_sensitive_strings(item) for item in data]
-    if isinstance(data, str):
-        # Apply redaction to the string value itself
-        data = OPENAI_KEY_PATTERN.sub("[REDACTED_OPENAI_KEY]", data)
-        data = GEMINI_KEY_PATTERN.sub("[REDACTED_GEMINI_KEY]", data)
-    return data
+from .utils.redaction import redact_sensitive_info
 
 
 class SingleChatUI:
@@ -281,7 +263,7 @@ class SingleChatUI:
                 "response": last_turn[1],
             }
             # Redact sensitive info before writing to the user-facing log
-            safe_log_entry = _redact_sensitive_strings(log_entry)
+            safe_log_entry = redact_sensitive_info(log_entry)
             with open(log_filepath, "a", encoding="utf-8") as f:
                 f.write(json.dumps(safe_log_entry) + "\n")
         except (OSError, IndexError) as e:

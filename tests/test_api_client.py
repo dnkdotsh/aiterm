@@ -8,10 +8,10 @@ import requests
 from aiterm.api_client import (
     ApiRequestError,
     MissingApiKeyError,
-    _redact_sensitive_info,
     check_api_keys,
     make_api_request,
 )
+from aiterm.utils.redaction import redact_sensitive_info
 
 
 @pytest.fixture
@@ -30,14 +30,18 @@ def test_check_api_keys_gemini_success(monkeypatch):
     assert check_api_keys("gemini") == "test_key"
 
 
-def test_check_api_keys_missing_openai(monkeypatch):
+def test_check_api_keys_missing_openai(monkeypatch, mocker):
+    # Mock load_dotenv to prevent it from reading a real .env file
+    mocker.patch("aiterm.api_client.load_dotenv")
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     with pytest.raises(MissingApiKeyError) as excinfo:
         check_api_keys("openai")
     assert "OPENAI_API_KEY" in str(excinfo.value)
 
 
-def test_check_api_keys_missing_gemini(monkeypatch):
+def test_check_api_keys_missing_gemini(monkeypatch, mocker):
+    # Mock load_dotenv to prevent it from reading a real .env file
+    mocker.patch("aiterm.api_client.load_dotenv")
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     with pytest.raises(MissingApiKeyError) as excinfo:
         check_api_keys("gemini")
@@ -47,17 +51,31 @@ def test_check_api_keys_missing_gemini(monkeypatch):
 def test_redact_sensitive_info():
     log_entry = {
         "request": {
-            "url": "https://api.gemini.com/v1/models?key=supersecretkey",
-            "headers": {"Authorization": "Bearer anothersecret"},
+            "url": "https://api.gemini.com/v1/models?key=AIzaSy_supersecretkey_1234567890",
+            "headers": {"Authorization": "Bearer sk-proj-anothersecretkey1234567890"},
             "payload": {"data": "test", "api_key": "payload_secret"},
-        }
+        },
+        "response": {
+            "error": "Invalid key provided: AIzaSy_supersecretkey_1234567890. Please check your credentials."
+        },
     }
-    redacted = _redact_sensitive_info(log_entry)
+    redacted = redact_sensitive_info(log_entry)
+
+    # Test request redaction
     assert "key=[REDACTED]" in redacted["request"]["url"]
+    assert "AIzaSy" not in redacted["request"]["url"]
     assert redacted["request"]["headers"]["Authorization"] == "Bearer [REDACTED]"
+    assert "sk-proj-" not in redacted["request"]["headers"]["Authorization"]
     assert redacted["request"]["payload"]["api_key"] == "[REDACTED]"
-    # Ensure original is not modified
-    assert "supersecretkey" in log_entry["request"]["url"]
+
+    # Test response body redaction (the key fix)
+    assert "[REDACTED_GEMINI_KEY]" in redacted["response"]["error"]
+    assert "AIzaSy_supersecretkey" not in redacted["response"]["error"]
+
+    # Ensure original data is not mutated
+    assert "AIzaSy_supersecretkey" in log_entry["request"]["url"]
+    assert "sk-proj-" in log_entry["request"]["headers"]["Authorization"]
+    assert "AIzaSy_supersecretkey" in log_entry["response"]["error"]
 
 
 def test_make_api_request_success(mocker, mock_settings):

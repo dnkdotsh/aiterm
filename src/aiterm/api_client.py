@@ -15,15 +15,12 @@
 # along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 
-import copy
 import datetime
 import json
 import logging
 import os
-import re
 import sys
 from logging.handlers import RotatingFileHandler
-from typing import Any
 
 import requests
 from dotenv import load_dotenv
@@ -33,6 +30,7 @@ from .engine import AIEngine
 from .logger import log
 from .settings import settings
 from .utils.formatters import RESET_COLOR, SYSTEM_MSG
+from .utils.redaction import redact_sensitive_info
 
 
 class MissingApiKeyError(Exception):
@@ -84,42 +82,6 @@ def check_api_keys(engine: str):
             f"Error: Environment variable '{key_name}' is not set."
         )
     return api_key
-
-
-def _redact_recursive(data: Any, sensitive_keys: set[str]) -> Any:
-    """Recursively traverses a dict or list to redact sensitive information."""
-    if isinstance(data, dict):
-        return {
-            key: "[REDACTED]"
-            if key in sensitive_keys
-            else _redact_recursive(value, sensitive_keys)
-            for key, value in data.items()
-        }
-    if isinstance(data, list):
-        return [_redact_recursive(item, sensitive_keys) for item in data]
-    return data
-
-
-def _redact_sensitive_info(log_entry: dict) -> dict:
-    """Redacts sensitive information (API keys) from a log entry."""
-    safe_log_entry = copy.deepcopy(log_entry)
-    sensitive_keys = {"api_key", "key", "token", "authorization"}
-
-    # Redact request
-    request = safe_log_entry.get("request", {})
-    if "url" in request and "key=" in request["url"]:
-        request["url"] = re.sub(r"key=([^&]+)", "key=[REDACTED]", request["url"])
-    if "headers" in request and "Authorization" in request["headers"]:
-        request["headers"]["Authorization"] = "Bearer [REDACTED]"
-    if "payload" in request:
-        request["payload"] = _redact_recursive(request["payload"], sensitive_keys)
-
-    # Redact response
-    response = safe_log_entry.get("response")
-    if isinstance(response, dict):  # Handles JSON responses and errors
-        safe_log_entry["response"] = _redact_recursive(response, sensitive_keys)
-
-    return safe_log_entry
 
 
 def make_api_request(
@@ -197,7 +159,7 @@ def make_api_request(
                 }
 
         if debug_active:
-            safe_log_entry = _redact_sensitive_info(log_entry)
+            safe_log_entry = redact_sensitive_info(log_entry)
             if session_raw_logs is not None:
                 session_raw_logs.append(safe_log_entry)
             raw_api_logger.info(json.dumps(safe_log_entry))
