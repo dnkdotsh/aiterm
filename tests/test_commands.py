@@ -13,6 +13,7 @@ from aiterm.personas import Persona
 from aiterm.utils.message_builder import (
     construct_assistant_message,
     construct_user_message,
+    extract_text_from_message,
 )
 
 
@@ -94,15 +95,15 @@ class TestCommands:
 
     def test_handle_model(self, mock_session_manager, capsys):
         """Tests the /model command correctly sets the model."""
-        commands.handle_model(["gpt-4-turbo"], mock_session_manager)
-        assert mock_session_manager.state.model == "gpt-4-turbo"
+        commands.handle_model(["gemini-pro"], mock_session_manager)
+        assert mock_session_manager.state.model == "gemini-pro"
         captured = capsys.readouterr()
-        assert "Model set to: gpt-4-turbo" in captured.out
+        assert "Model set to: gemini-pro" in captured.out
 
-    def test_handle_engine_switch(self, mocker, mock_session_manager, capsys):
+    def test_handle_engine_switch(self, mocker, mock_openai_session_manager, capsys):
         """Tests a successful switch of the AI engine."""
         # Initial state is openai engine from fixture
-        assert isinstance(mock_session_manager.state.engine, OpenAIEngine)
+        assert isinstance(mock_openai_session_manager.state.engine, OpenAIEngine)
 
         # Mock dependencies for the switch
         mocker.patch("aiterm.api_client.check_api_keys", return_value="fake_gemini_key")
@@ -115,25 +116,27 @@ class TestCommands:
         )
         mocker.patch("aiterm.commands.translate_history", return_value=[])
 
-        commands.handle_engine(["gemini"], mock_session_manager)
+        commands.handle_engine(["gemini"], mock_openai_session_manager)
 
-        assert isinstance(mock_session_manager.state.engine, GeminiEngine)
-        assert mock_session_manager.state.model == "gemini-1.5-flash"
+        assert isinstance(mock_openai_session_manager.state.engine, GeminiEngine)
+        assert mock_openai_session_manager.state.model == "gemini-1.5-flash"
         api_client.check_api_keys.assert_called_with("gemini")
         captured = capsys.readouterr()
         assert "Engine switched to Gemini" in captured.out
 
-    def test_handle_engine_switch_no_key(self, mocker, mock_session_manager, capsys):
+    def test_handle_engine_switch_no_key(
+        self, mocker, mock_openai_session_manager, capsys
+    ):
         """Tests that switching engines fails if the API key is missing."""
         mocker.patch(
             "aiterm.api_client.check_api_keys",
             side_effect=api_client.MissingApiKeyError("No key"),
         )
 
-        commands.handle_engine(["gemini"], mock_session_manager)
+        commands.handle_engine(["gemini"], mock_openai_session_manager)
 
         # State should not change
-        assert isinstance(mock_session_manager.state.engine, OpenAIEngine)
+        assert isinstance(mock_openai_session_manager.state.engine, OpenAIEngine)
         captured = capsys.readouterr()
         assert "Switch failed: No key" in captured.out
 
@@ -147,8 +150,8 @@ class TestCommands:
     def test_handle_history_populated(self, mock_session_manager, capsys):
         """Tests /history command with content."""
         mock_session_manager.state.history = [
-            construct_user_message("openai", "Hello", []),
-            construct_assistant_message("openai", "Hi there"),
+            construct_user_message("gemini", "Hello", []),
+            construct_assistant_message("gemini", "Hi there"),
         ]
         commands.handle_history([], mock_session_manager)
         captured = capsys.readouterr()
@@ -169,7 +172,7 @@ class TestCommands:
 
         commands.handle_state([], mock_session_manager)
         captured = capsys.readouterr()
-        assert "Engine: openai, Model: gpt-4o-mini" in captured.out
+        assert "Engine: gemini, Model: gemini-1.5-flash" in captured.out
         assert "Max Tokens: 1024" in captured.out
         assert "Attached Text Files: 1 (3.00 B)" in captured.out
         assert "System Prompt: Active" in captured.out
@@ -242,13 +245,12 @@ class TestCommands:
         assert (
             Path("/fake/persona_file.txt") not in mock_session_manager.state.attachments
         )
-        assert (
-            "Persona cleared"
-            in mock_session_manager.state.history[-1]["content"][0]["text"]
+        assert "Persona cleared" in extract_text_from_message(
+            mock_session_manager.state.history[-1]
         )
         assert mock_session_manager.context_manager.attachments == {}
 
-    def test_handle_persona_apply(self, mocker, mock_session_manager):
+    def test_handle_persona_apply(self, mocker, mock_openai_session_manager):
         """Tests applying a new persona with attachments and settings."""
         # Mock `handle_engine` as its test is separate
         mocker.patch("aiterm.commands.handle_engine")
@@ -273,33 +275,37 @@ class TestCommands:
         )
 
         # Set an initial state with a different persona's attachments
-        mock_session_manager.state.persona_attachments = {Path("/old/file.txt")}
-        mock_session_manager.state.attachments = {
+        mock_openai_session_manager.state.persona_attachments = {Path("/old/file.txt")}
+        mock_openai_session_manager.state.attachments = {
             Path("/old/file.txt"): Attachment(content="old", mtime=1),
             Path("/user/file.txt"): Attachment(content="user", mtime=1),
         }
 
-        commands.handle_persona(["newguy"], mock_session_manager)
+        commands.handle_persona(["newguy"], mock_openai_session_manager)
 
         # 1. Assert old persona attachments are gone
-        assert Path("/old/file.txt") not in mock_session_manager.state.attachments
+        assert (
+            Path("/old/file.txt") not in mock_openai_session_manager.state.attachments
+        )
         # 2. Assert new persona attachments are added
-        assert Path("/path/to/doc.md") in mock_session_manager.state.attachments
+        assert Path("/path/to/doc.md") in mock_openai_session_manager.state.attachments
         # 3. Assert user-added attachments remain
-        assert Path("/user/file.txt") in mock_session_manager.state.attachments
+        assert Path("/user/file.txt") in mock_openai_session_manager.state.attachments
         # 4. Assert persona attachment tracking is updated
-        assert mock_session_manager.state.persona_attachments == {
+        assert mock_openai_session_manager.state.persona_attachments == {
             Path("/path/to/doc.md")
         }
         # 5. Assert persona settings are applied
-        commands.handle_engine.assert_called_with(["gemini"], mock_session_manager)
-        assert mock_session_manager.state.model == "gemini-pro"
-        assert mock_session_manager.state.system_prompt == "You are NewGuy."
-        assert mock_session_manager.state.current_persona == new_persona
+        commands.handle_engine.assert_called_with(
+            ["gemini"], mock_openai_session_manager
+        )
+        assert mock_openai_session_manager.state.model == "gemini-pro"
+        assert mock_openai_session_manager.state.system_prompt == "You are NewGuy."
+        assert mock_openai_session_manager.state.current_persona == new_persona
         # 6. Assert the context manager is synced at the end
         assert (
-            mock_session_manager.context_manager.attachments
-            == mock_session_manager.state.attachments
+            mock_openai_session_manager.context_manager.attachments
+            == mock_openai_session_manager.state.attachments
         )
 
     def test_handle_detach(self, mock_session_manager):
@@ -314,7 +320,9 @@ class TestCommands:
             "/fake/file.txt"
         )
         assert len(mock_session_manager.state.history) == initial_history_len + 1
-        last_message = mock_session_manager.state.history[-1]
-        assert "[SYSTEM]" in last_message["content"][0]["text"]
-        assert "detached" in last_message["content"][0]["text"]
-        assert "'file.txt'" in last_message["content"][0]["text"]
+        last_message_text = extract_text_from_message(
+            mock_session_manager.state.history[-1]
+        )
+        assert "[SYSTEM]" in last_message_text
+        assert "detached" in last_message_text
+        assert "'file.txt'" in last_message_text

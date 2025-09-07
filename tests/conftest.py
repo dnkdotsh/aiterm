@@ -33,8 +33,24 @@ def mock_gemini_engine():
 
 
 @pytest.fixture
-def mock_session_state(mock_openai_engine):
-    """Provides a basic SessionState instance for testing."""
+def mock_session_state(mock_gemini_engine):
+    """Provides a basic SessionState instance for testing, defaulting to Gemini."""
+    return SessionState(
+        engine=mock_gemini_engine,
+        model="gemini-1.5-flash",
+        system_prompt="You are a helpful assistant.",
+        initial_system_prompt="You are a helpful assistant.",
+        current_persona=None,
+        max_tokens=1024,
+        memory_enabled=True,
+        debug_active=False,
+        stream_active=True,
+    )
+
+
+@pytest.fixture
+def mock_openai_session_state(mock_openai_engine):
+    """Provides a SessionState instance using OpenAIEngine."""
     return SessionState(
         engine=mock_openai_engine,
         model="gpt-4o-mini",
@@ -50,13 +66,24 @@ def mock_session_state(mock_openai_engine):
 
 @pytest.fixture
 def mock_session_manager(mocker, mock_session_state):
-    """Provides a mock SessionManager instance with a mock context manager."""
+    """Provides a mock SessionManager instance (defaulting to Gemini) with a mock context manager."""
     mock_context_manager = mocker.MagicMock()
     # Create the session manager with the mock state and mock context manager
     manager = SessionManager(
         state=mock_session_state, context_manager=mock_context_manager
     )
     # Also mock the image workflow which is initialized inside the manager
+    manager.image_workflow = mocker.MagicMock()
+    return manager
+
+
+@pytest.fixture
+def mock_openai_session_manager(mocker, mock_openai_session_state):
+    """Provides a SessionManager instance with an OpenAI engine."""
+    mock_context_manager = mocker.MagicMock()
+    manager = SessionManager(
+        state=mock_openai_session_state, context_manager=mock_context_manager
+    )
     manager.image_workflow = mocker.MagicMock()
     return manager
 
@@ -164,4 +191,22 @@ def mock_prompt_toolkit(mocker):
 
     return {
         "input_queue": input_queue  # Tests will populate this list
+    }
+
+
+@pytest.fixture
+def mock_config_params():
+    """Provides a standard mock dictionary for resolved configuration parameters."""
+    return {
+        "engine_name": "gemini",
+        "model": "gemini-test-model",
+        "max_tokens": 1024,
+        "stream": True,
+        "memory_enabled": True,
+        "debug_enabled": False,
+        "persona": None,
+        "session_name": "test_session",
+        "system_prompt_arg": None,
+        "files_arg": [],
+        "exclude_arg": [],
     }
