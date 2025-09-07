@@ -39,12 +39,19 @@ from .session_state import SessionState
 from .settings import save_setting, settings
 from .utils.config_loader import get_default_model_for_engine
 from .utils.formatters import (
+    ASSISTANT_PROMPT,
+    DIRECTOR_PROMPT,
     RESET_COLOR,
     SYSTEM_MSG,
+    USER_PROMPT,
     format_bytes,
     sanitize_filename,
 )
-from .utils.message_builder import construct_user_message, translate_history
+from .utils.message_builder import (
+    construct_user_message,
+    extract_text_from_message,
+    translate_history,
+)
 from .utils.ui_helpers import display_help, select_model
 
 if TYPE_CHECKING:
@@ -164,7 +171,22 @@ def handle_engine(args: list[str], session: SessionManager) -> None:
 
 
 def handle_history(args: list[str], session: SessionManager) -> None:
-    print(json.dumps(session.state.history, indent=2))
+    print(f"{SYSTEM_MSG}--- Conversation History ---{RESET_COLOR}")
+    if not session.state.history:
+        print("History is empty.")
+        return
+
+    for message in session.state.history:
+        role = message.get("role")
+        text_content = extract_text_from_message(message)
+
+        if not text_content:
+            continue
+
+        if role == "user":
+            print(f"\n{USER_PROMPT}You:{RESET_COLOR}\n{text_content}")
+        elif role in ["assistant", "model"]:
+            print(f"\n{ASSISTANT_PROMPT}Assistant:{RESET_COLOR}\n{text_content}")
 
 
 def handle_state(args: list[str], session: SessionManager) -> None:
@@ -612,9 +634,20 @@ def handle_multichat_help(
 def handle_multichat_history(
     args: list[str], session: MultiChatSession, cli_history: InMemoryHistory
 ) -> None:
-    import json
+    print(f"{SYSTEM_MSG}--- Shared Conversation History ---{RESET_COLOR}")
+    if not session.state.shared_history:
+        print("History is empty.")
+        return
 
-    print(json.dumps(session.state.shared_history, indent=2))
+    for message in session.state.shared_history:
+        text_content = extract_text_from_message(message).strip()
+        if not text_content:
+            continue
+
+        if text_content.lower().startswith("director"):
+            print(f"\n{DIRECTOR_PROMPT}{text_content}{RESET_COLOR}")
+        else:
+            print(f"\n{ASSISTANT_PROMPT}{text_content}{RESET_COLOR}")
 
 
 def handle_multichat_debug(

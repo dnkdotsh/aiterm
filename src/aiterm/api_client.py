@@ -23,6 +23,7 @@ import re
 import sys
 
 import requests
+from requests.exceptions import JSONDecodeError
 
 from . import config
 from .engine import AIEngine
@@ -116,12 +117,12 @@ def make_api_request(
                 error_details = error_json["error"]["message"]
             else:
                 error_details = e.response.text
-        except json.JSONDecodeError:
+        except JSONDecodeError:
             error_details = e.response.text
         log.error("HTTP Request Error: %s\nDETAILS: %s", e, error_details)
         error_details_for_log = error_details
         raise ApiRequestError(error_details) from e
-    except json.JSONDecodeError as e:
+    except JSONDecodeError as e:
         log.error("Failed to decode API response.")
         error_details_for_log = "Failed to decode API response."
         raise ApiRequestError("Failed to decode API response.") from e
