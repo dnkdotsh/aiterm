@@ -35,6 +35,7 @@ from . import api_client, config, prompts, theme_manager, workflows
 from . import personas as persona_manager
 from .engine import get_engine
 from .logger import log
+from .managers.context_manager import Attachment
 from .session_state import SessionState
 from .settings import save_setting, settings
 from .utils.config_loader import get_default_model_for_engine
@@ -316,7 +317,7 @@ def _save_session_to_file(session: SessionManager, filename: str) -> bool:
     state_dict["engine_name"] = session.state.engine.name
     del state_dict["engine"]
     state_dict["attachments"] = {
-        str(k): v for k, v in session.state.attachments.items()
+        str(k): asdict(v) for k, v in session.state.attachments.items()
     }
     state_dict["persona_attachments"] = [
         str(p) for p in session.state.persona_attachments
@@ -398,7 +399,9 @@ def handle_load(args: list[str], session: SessionManager) -> bool:
         data["engine"] = get_engine(engine_name, api_key)
 
         if "attachments" in data:
-            data["attachments"] = {Path(k): v for k, v in data["attachments"].items()}
+            data["attachments"] = {
+                Path(k): Attachment(**v) for k, v in data["attachments"].items()
+            }
 
         if "persona_attachments" in data:
             data["persona_attachments"] = {Path(p) for p in data["persona_attachments"]}
@@ -466,7 +469,7 @@ def handle_print(args: list[str], session: SessionManager) -> None:
     )
 
     if path_to_print:
-        content = session.state.attachments[path_to_print]
+        content = session.state.attachments[path_to_print].content
         print(f"\n{SYSTEM_MSG}--- Content of {filename} ---{RESET_COLOR}\n{content}")
         print(f"{SYSTEM_MSG}--- End of {filename} ---{RESET_COLOR}")
     else:
@@ -495,30 +498,36 @@ def handle_attach(args: list[str], session: SessionManager) -> None:
 
 
 def handle_detach(args: list[str], session: SessionManager) -> None:
-    filename = " ".join(args)
-    if not filename:
-        print(f"{SYSTEM_MSG}--> Usage: /detach <filename>{RESET_COLOR}")
+    path_str = " ".join(args)
+    if not path_str:
+        print(f"{SYSTEM_MSG}--> Usage: /detach <path_to_file_or_dir>{RESET_COLOR}")
         return
 
-    # Find the full path to remove, as context_manager tracks full paths
-    path_to_remove = next(
-        (p for p in session.state.attachments if p.name == filename), None
-    )
-    if path_to_remove:
-        session.context_manager.detach_file(filename)
-        # Also remove from persona tracking if it was a persona file
-        session.state.persona_attachments.discard(path_to_remove)
-        session.state.attachments = session.context_manager.attachments
+    detached_paths = session.context_manager.detach(path_str)
 
-        system_message_text = (
-            f"[SYSTEM] The file '{filename}' has been detached from the context."
-        )
+    if detached_paths:
+        detached_count = len(detached_paths)
+        for path in detached_paths:
+            # Also remove from persona tracking if it was a persona file
+            session.state.persona_attachments.discard(path)
+
+        if detached_count == 1:
+            display_name = f"'{detached_paths[0].name}'"
+        else:
+            # When detaching a directory, use the user's input string for clarity
+            display_name = f"{detached_count} files from '{path_str}'"
+
+        print(f"{SYSTEM_MSG}--> Detached {display_name}.{RESET_COLOR}")
+
+        system_message_text = f"[SYSTEM] The content from {display_name} has been detached from the context."
         system_message = construct_user_message(
             session.state.engine.name, system_message_text, []
         )
         session.state.history.append(system_message)
     else:
-        print(f"{SYSTEM_MSG}--> No attached file named '{filename}'.{RESET_COLOR}")
+        print(
+            f"{SYSTEM_MSG}--> No attached file or directory matching '{path_str}'.{RESET_COLOR}"
+        )
 
 
 def handle_personas(args: list[str], session: SessionManager) -> None:

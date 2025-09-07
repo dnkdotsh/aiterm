@@ -24,6 +24,7 @@ import mimetypes
 import os
 import tarfile
 import zipfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +39,14 @@ from ..utils.file_processor import (
 from ..utils.formatters import RESET_COLOR, SYSTEM_MSG, format_bytes
 
 
+@dataclass
+class Attachment:
+    """Represents an attached file's content and metadata."""
+
+    content: str
+    mtime: float
+
+
 class ContextManager:
     """Handles the aggregation and management of contextual data for a session."""
 
@@ -48,7 +57,7 @@ class ContextManager:
         exclude_arg: list[str] | None,
     ):
         self.memory_content: str | None = None
-        self.attachments: dict[Path, str] = {}
+        self.attachments: dict[Path, Attachment] = {}
         self.image_data: list[dict[str, Any]] = []
 
         self._process_files(files_arg, memory_enabled, exclude_arg)
@@ -106,8 +115,9 @@ class ContextManager:
 
     def _process_text_file(self, filepath: Path) -> None:
         try:
-            with open(filepath, encoding="utf-8", errors="ignore") as f:
-                self.attachments[filepath] = f.read()
+            content = filepath.read_text(encoding="utf-8", errors="ignore")
+            mtime = filepath.stat().st_mtime
+            self.attachments[filepath] = Attachment(content=content, mtime=mtime)
         except OSError as e:
             log.warning("Could not read file %s: %s", filepath, e)
 
@@ -139,7 +149,11 @@ class ContextManager:
                                 f"--- FILE (from {zip_path.name}): {filename} ---\n{content}"
                             )
                 if zip_content_parts:
-                    self.attachments[zip_path] = "\n\n".join(zip_content_parts)
+                    content = "\n\n".join(zip_content_parts)
+                    mtime = zip_path.stat().st_mtime
+                    self.attachments[zip_path] = Attachment(
+                        content=content, mtime=mtime
+                    )
         except (OSError, zipfile.BadZipFile) as e:
             log.warning("Could not process zip file %s: %s", zip_path, e)
 
@@ -160,7 +174,11 @@ class ContextManager:
                                 f"--- FILE (from {tar_path.name}): {member.name} ---\n{content}"
                             )
                 if tar_content_parts:
-                    self.attachments[tar_path] = "\n\n".join(tar_content_parts)
+                    content = "\n\n".join(tar_content_parts)
+                    mtime = tar_path.stat().st_mtime
+                    self.attachments[tar_path] = Attachment(
+                        content=content, mtime=mtime
+                    )
         except (OSError, tarfile.TarError) as e:
             log.warning("Could not process tar file %s: %s", tar_path, e)
 
@@ -196,13 +214,18 @@ class ContextManager:
         updated, removed = [], []
         for path in paths_to_refresh:
             try:
-                self.attachments[path] = path.read_text(
-                    encoding="utf-8", errors="ignore"
-                )
-                updated.append(path.name)
-            except (OSError, FileNotFoundError):
+                current_mtime = path.stat().st_mtime
+                if current_mtime > self.attachments[path].mtime:
+                    self.attachments[path].content = path.read_text(
+                        encoding="utf-8", errors="ignore"
+                    )
+                    self.attachments[path].mtime = current_mtime
+                    updated.append(path.name)
+            except FileNotFoundError:
                 removed.append(path.name)
                 del self.attachments[path]
+            except OSError as e:
+                log.warning("Could not refresh file %s: %s", path, e)
 
         if updated:
             print(f"{SYSTEM_MSG}--> Refreshed: {', '.join(updated)}{RESET_COLOR}")
@@ -288,10 +311,43 @@ class ContextManager:
                 f"{SYSTEM_MSG}--> No readable text content found at path: {path.name}{RESET_COLOR}"
             )
 
-    def detach_file(self, filename: str) -> None:
-        path_to_remove = next((p for p in self.attachments if p.name == filename), None)
-        if path_to_remove:
-            del self.attachments[path_to_remove]
-            print(f"{SYSTEM_MSG}--> Detached file: {path_to_remove.name}{RESET_COLOR}")
-        else:
-            print(f"{SYSTEM_MSG}--> No attached file named '{filename}'.{RESET_COLOR}")
+    def detach(self, path_str: str) -> list[Path]:
+        """
+        Detaches a file or all files within a directory from the context.
+        Returns a list of the paths that were detached.
+        """
+        if not path_str:
+            return []
+
+        try:
+            # Try to resolve user input as a path.
+            # This will work for relative paths like 'src/utils' or absolute paths.
+            input_path = Path(path_str).expanduser().resolve()
+        except (OSError, RuntimeError) as e:
+            # OSError can happen for invalid filenames on Windows.
+            # RuntimeError can happen for deep recursion on some systems.
+            log.warning("Could not resolve detach path '%s': %s", path_str, e)
+            # If path resolution fails, we can still try to match by filename.
+            input_path = None
+
+        paths_to_remove = []
+        if input_path:
+            # Find all attached files that are inside the given path.
+            paths_to_remove = [
+                p for p in self.attachments if p.is_relative_to(input_path)
+            ]
+
+        # If nothing was found by path, it might be because the user just gave a filename
+        # for a file that isn't in the current directory, or resolution failed.
+        # So, fall back to matching by name.
+        if not paths_to_remove:
+            paths_to_remove = [p for p in self.attachments if p.name == path_str]
+
+        if not paths_to_remove:
+            return []
+
+        for path in paths_to_remove:
+            if path in self.attachments:
+                del self.attachments[path]
+
+        return paths_to_remove

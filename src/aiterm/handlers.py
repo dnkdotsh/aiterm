@@ -46,7 +46,7 @@ def handle_chat(initial_prompt: str | None, args: argparse.Namespace) -> None:
 
     persona_attachment_path_strs = set(p["persona"].attachments if p["persona"] else [])
     all_files_to_process = list(p["files_arg"] or [])
-    all_files_to_process.extend(persona_attachment_path_strs)
+    all_files_to_process.extend(p["persona"].attachments if p["persona"] else [])
 
     context_manager = ContextManager(
         files_arg=all_files_to_process,
@@ -101,7 +101,8 @@ def handle_chat(initial_prompt: str | None, args: argparse.Namespace) -> None:
 
     # Check for large context size and warn the user.
     total_attachment_bytes = sum(
-        len(content.encode("utf-8")) for content in session.state.attachments.values()
+        len(attachment.content.encode("utf-8"))
+        for attachment in session.state.attachments.values()
     )
 
     if total_attachment_bytes > config.LARGE_ATTACHMENT_THRESHOLD_BYTES:
@@ -189,8 +190,8 @@ def handle_multichat_session(
     image_data = context.image_data
 
     attachment_texts = [
-        f"--- FILE: {path.as_posix()} ---\n{content}"
-        for path, content in attachments.items()
+        f"--- FILE: {path.as_posix()} ---\n{attachment.content}"
+        for path, attachment in attachments.items()
     ]
     attachments_str = "\n\n".join(attachment_texts)
 

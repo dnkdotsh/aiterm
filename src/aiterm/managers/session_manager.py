@@ -175,8 +175,8 @@ class SessionManager:
 
         if self.state.attachments:
             attachment_texts = [
-                f"--- FILE: {path.as_posix()} ---\n{content}"
-                for path, content in self.state.attachments.items()
+                f"--- FILE: {path.as_posix()} ---\n{attachment.content}"
+                for path, attachment in self.state.attachments.items()
             ]
             prompt_parts.append(
                 "--- ATTACHED FILES ---\n" + "\n\n".join(attachment_texts)
