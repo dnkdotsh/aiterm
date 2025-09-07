@@ -8,7 +8,7 @@ To get started with modifying the code, you'll want to install the project in an
 
 1.  **Clone the Repository**
     ```bash
-    git clone https://github.com/your-repo/aiterm.git
+    git clone https://github.com/dnkdotsh/aiterm.git
     cd aiterm
     ```
 
