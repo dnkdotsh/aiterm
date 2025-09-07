@@ -541,72 +541,83 @@ def handle_personas(args: list[str], session: SessionManager) -> None:
 
 
 def handle_persona(args: list[str], session: SessionManager) -> None:
+    """Handles clearing, loading, and applying a persona's settings and context."""
     name = " ".join(args)
     if not name:
         print(f"{SYSTEM_MSG}--> Usage: /persona <name> OR /persona clear{RESET_COLOR}")
         return
 
-    # Remove attachments from the old persona, if any
+    # --- Attachment Management ---
+    # 1. Always remove attachments from the previous persona.
     for path in session.state.persona_attachments:
         session.state.attachments.pop(path, None)
     session.state.persona_attachments.clear()
 
+    # --- Settings Management ---
     if name.lower() == "clear":
         if not session.state.current_persona:
             print(f"{SYSTEM_MSG}--> No active persona to clear.{RESET_COLOR}")
-            return
-        session.state.system_prompt = session.state.initial_system_prompt
-        session.state.current_persona = None
-        print(f"{SYSTEM_MSG}--> Persona cleared.{RESET_COLOR}")
-        session.state.history.append(
-            construct_user_message(
-                session.state.engine.name, "[SYSTEM] Persona cleared.", []
+        else:
+            session.state.system_prompt = session.state.initial_system_prompt
+            session.state.current_persona = None
+            print(f"{SYSTEM_MSG}--> Persona cleared.{RESET_COLOR}")
+            session.state.history.append(
+                construct_user_message(
+                    session.state.engine.name, "[SYSTEM] Persona cleared.", []
+                )
             )
-        )
-        return
+    else:
+        new_persona = persona_manager.load_persona(name)
+        if not new_persona:
+            print(f"{SYSTEM_MSG}--> Persona '{name}' not found.{RESET_COLOR}")
+        else:
+            # Apply persona settings before adding attachments
+            if new_persona.engine and new_persona.engine != session.state.engine.name:
+                print(
+                    f"{SYSTEM_MSG}--> Switching engine to {new_persona.engine} for persona '{new_persona.name}'...{RESET_COLOR}"
+                )
+                handle_engine([new_persona.engine], session)
 
-    new_persona = persona_manager.load_persona(name)
-    if not new_persona:
-        print(f"{SYSTEM_MSG}--> Persona '{name}' not found.{RESET_COLOR}")
-        return
+            if new_persona.model:
+                session.state.model = new_persona.model
+            if new_persona.max_tokens is not None:
+                session.state.max_tokens = new_persona.max_tokens
+            if new_persona.stream is not None:
+                session.state.stream_active = new_persona.stream
 
-    if new_persona.engine and new_persona.engine != session.state.engine.name:
-        print(
-            f"{SYSTEM_MSG}--> Switching engine to {new_persona.engine} for persona '{new_persona.name}'...{RESET_COLOR}"
-        )
-        handle_engine([new_persona.engine], session)
+            # 2. Add new attachments from the loaded persona
+            if new_persona.attachments:
+                from .managers.context_manager import ContextManager
 
-    if new_persona.model:
-        session.state.model = new_persona.model
-    if new_persona.max_tokens is not None:
-        session.state.max_tokens = new_persona.max_tokens
-    if new_persona.stream is not None:
-        session.state.stream_active = new_persona.stream
+                temp_context = ContextManager(
+                    files_arg=new_persona.attachments,
+                    memory_enabled=False,
+                    exclude_arg=[],
+                )
+                session.state.attachments.update(temp_context.attachments)
+                session.state.persona_attachments.update(
+                    temp_context.attachments.keys()
+                )
+                print(
+                    f"{SYSTEM_MSG}--> Attached {len(temp_context.attachments)} file(s) from persona.{RESET_COLOR}"
+                )
 
-    # Add attachments from the new persona
-    if new_persona.attachments:
-        # Import dynamically to avoid circular dependency at module level
-        from .managers.context_manager import ContextManager
+            session.state.system_prompt = new_persona.system_prompt
+            session.state.current_persona = new_persona
+            print(
+                f"{SYSTEM_MSG}--> Switched to persona: '{new_persona.name}'{RESET_COLOR}"
+            )
+            session.state.history.append(
+                construct_user_message(
+                    session.state.engine.name,
+                    f"[SYSTEM] Persona switched to '{new_persona.name}'.",
+                    [],
+                )
+            )
 
-        temp_context = ContextManager(
-            files_arg=new_persona.attachments, memory_enabled=False, exclude_arg=[]
-        )
-        session.state.attachments.update(temp_context.attachments)
-        session.state.persona_attachments.update(temp_context.attachments.keys())
-        print(
-            f"{SYSTEM_MSG}--> Attached {len(temp_context.attachments)} file(s) from persona.{RESET_COLOR}"
-        )
-
-    session.state.system_prompt = new_persona.system_prompt
-    session.state.current_persona = new_persona
-    print(f"{SYSTEM_MSG}--> Switched to persona: '{new_persona.name}'{RESET_COLOR}")
-    session.state.history.append(
-        construct_user_message(
-            session.state.engine.name,
-            f"[SYSTEM] Persona switched to '{new_persona.name}'.",
-            [],
-        )
-    )
+    # --- Final Sync ---
+    # After all manipulations, sync the state to the context manager to ensure consistency.
+    session.context_manager.attachments = session.state.attachments
 
 
 def handle_image(args: list[str], session: SessionManager) -> None:
