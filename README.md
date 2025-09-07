@@ -69,9 +69,9 @@ pip install .
 
 ## Full Documentation
 
--   **[docs/USAGE.md](USAGE.md)**: Practical "cookbook" guides for real-world developer workflows.
--   **[docs/MANUAL.md](MANUAL.md)**: A comprehensive reference for all command-line flags and interactive `/commands`.
--   **[docs/CONTRIBUTING.md](CONTRIBUTING.md)**: Instructions for setting up a development environment and contributing to the project.
+-   **[USAGE.md](docs/USAGE.md)**: Practical "cookbook" guides for real-world developer workflows.
+-   **[MANUAL.md](docs/MANUAL.md)**: A comprehensive reference for all command-line flags and interactive `/commands`.
+-   **[CONTRIBUTING.md](docs/CONTRIBUTING.md)**: Instructions for setting up a development environment and contributing to the project.
 
 ---
 
