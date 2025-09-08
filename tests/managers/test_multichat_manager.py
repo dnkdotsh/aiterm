@@ -68,12 +68,11 @@ class TestMultiChatManager:
         assert "Director to All: Hello everyone" in extract_text_from_message(
             final_history[-3]
         )
-        assert "[Openai]: Secondary response" in extract_text_from_message(
-            final_history[-2]
-        )
-        assert "[Gemini]: Primary response" in extract_text_from_message(
-            final_history[-1]
-        )
+        # Verify clean content and the new source_engine key.
+        assert extract_text_from_message(final_history[-2]) == "Secondary response"
+        assert final_history[-2]["source_engine"] == "openai"
+        assert extract_text_from_message(final_history[-1]) == "Primary response"
+        assert final_history[-1]["source_engine"] == "gemini"
 
     @patch("aiterm.api_client.perform_chat_request")
     def test_process_turn_targeted(
@@ -101,9 +100,11 @@ class TestMultiChatManager:
         assert "Director to Openai: What is your name?" in extract_text_from_message(
             final_history[-2]
         )
-        assert "[Openai]: Targeted OpenAI response" in extract_text_from_message(
-            final_history[-1]
+        # Verify clean content and the new source_engine key.
+        assert (
+            extract_text_from_message(final_history[-1]) == "Targeted OpenAI response"
         )
+        assert final_history[-1]["source_engine"] == "openai"
 
     @patch("aiterm.api_client.perform_chat_request")
     def test_process_turn_targeted_continuation(

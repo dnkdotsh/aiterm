@@ -25,17 +25,47 @@ from typing import Any
 def translate_history(
     history: list[dict[str, Any]], target_engine: str
 ) -> list[dict[str, Any]]:
-    """Translates a conversation history to the target engine's format."""
+    """
+    Translates a conversation history to the target engine's format,
+    handling role mapping for multi-chat sessions.
+    """
     translated = []
     for msg in history:
         role = msg.get("role")
         if role not in ["user", "assistant", "model"]:
             continue
+
         text_content = extract_text_from_message(msg)
+        source_engine = msg.get("source_engine")
+
         if role == "user":
+            # User (Director) messages are always from the user.
             translated.append(construct_user_message(target_engine, text_content, []))
         elif role in ["assistant", "model"]:
-            translated.append(construct_assistant_message(target_engine, text_content))
+            # If a source_engine is present, it's a multi-chat turn.
+            if source_engine:
+                if source_engine == target_engine:
+                    # Message is from the target AI itself, use the 'assistant'/'model' role.
+                    translated.append(
+                        construct_assistant_message(target_engine, text_content)
+                    )
+                else:
+                    # Message is from the OTHER AI. Assign it the 'user' role
+                    # and prepend a label to clarify the source for the target AI.
+                    # This prevents the AI from thinking it said what the other AI said.
+                    other_engine_name = source_engine.capitalize()
+                    labeled_content = (
+                        f"[{other_engine_name}'s Response]: {text_content}"
+                    )
+                    translated.append(
+                        construct_user_message(target_engine, labeled_content, [])
+                    )
+            else:
+                # Standard single-chat history, just translate the role.
+                translated.append(
+                    construct_assistant_message(target_engine, text_content)
+                )
+
     return translated
 
 

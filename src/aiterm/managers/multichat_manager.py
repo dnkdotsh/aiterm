@@ -101,7 +101,7 @@ class MultiChatSession:
             )
             print(f"\n{SYSTEM_MSG}{user_msg_text}{RESET_COLOR}")
             user_msg = construct_user_message(
-                target_engine_name,
+                "openai",  # Base format, will be translated
                 user_msg_text,
                 self.state.initial_image_data if is_first_turn else [],
             )
@@ -128,11 +128,11 @@ class MultiChatSession:
             )
             print()
             cleaned = clean_ai_response_text(engine.name, raw_response)
-            asst_msg_text = f"[{engine.name.capitalize()}]: {cleaned}"
-            asst_msg = construct_assistant_message("openai", asst_msg_text)
-            self.state.shared_history.extend(
-                [construct_user_message("openai", user_msg_text, []), asst_msg]
-            )
+            asst_msg = construct_assistant_message("openai", cleaned)
+            asst_msg["source_engine"] = engine.name
+
+            user_msg_for_log = construct_user_message("openai", user_msg_text, [])
+            self.state.shared_history.extend([user_msg_for_log, asst_msg])
             self._log_multichat_turn(log_filepath, self.state.shared_history[-2:])
         else:
             primary_engine = self.engines[self.primary_engine_name]
@@ -141,7 +141,7 @@ class MultiChatSession:
             ]
             user_msg_text = f"Director to All: {prompt_text}"
             user_msg = construct_user_message(
-                "openai",
+                "openai",  # Base format, will be translated
                 user_msg_text,
                 self.state.initial_image_data if is_first_turn else [],
             )
@@ -187,13 +187,14 @@ class MultiChatSession:
             )
 
             primary_cleaned = clean_ai_response_text(primary_engine.name, primary_raw)
-            primary_msg = construct_assistant_message(
-                "openai", f"[{primary_engine.name.capitalize()}]: {primary_cleaned}"
-            )
+            # Store messages with source engine metadata and without text prefixes.
+            primary_msg = construct_assistant_message("openai", primary_cleaned)
+            primary_msg["source_engine"] = primary_engine.name
+
             secondary_msg = construct_assistant_message(
-                "openai",
-                f"[{secondary_result['engine_name'].capitalize()}]: {secondary_result['text']}",
+                "openai", secondary_result["text"]
             )
+            secondary_msg["source_engine"] = secondary_result["engine_name"]
 
             first, second = (
                 (primary_msg, secondary_msg)
