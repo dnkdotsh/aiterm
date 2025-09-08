@@ -47,9 +47,6 @@ def setup_review_files(fake_fs):
     }
     session_path.write_text(json.dumps(session_content))
 
-    malformed_path = config.SESSIONS_DIRECTORY / "malformed.json"
-    malformed_path.write_text("{not_json:")
-
     # Set explicit, predictable modification times to control sorting
     os.utime(multichat_path, (1000, 1000))
     os.utime(log_path, (2000, 2000))
@@ -59,25 +56,21 @@ def setup_review_files(fake_fs):
         "log": log_path,
         "session": session_path,
         "multichat": multichat_path,
-        "malformed": malformed_path,
     }
 
 
 class TestReviewTool:
     """Test suite for the review tool."""
 
-    @pytest.mark.parametrize(
-        "file_key, expected_turns",
-        [
-            ("log", 1),
-            ("session", 1),
-            ("malformed", 0),
-        ],
-    )
-    def test_get_turn_count(self, setup_review_files, file_key, expected_turns):
+    def test_get_turn_count(self, setup_review_files, fake_fs):
         """Tests turn counting for different file types."""
-        file_path = setup_review_files[file_key]
-        assert review.get_turn_count(file_path) == expected_turns
+        # Test valid files
+        assert review.get_turn_count(setup_review_files["log"]) == 1
+        assert review.get_turn_count(setup_review_files["session"]) == 1
+        # Test malformed file separately
+        malformed_path = config.SESSIONS_DIRECTORY / "malformed.json"
+        malformed_path.write_text("{not_json:")
+        assert review.get_turn_count(malformed_path) == 0
 
     def test_replay_file_jsonl(self, setup_review_files, capsys, mocker):
         """Tests replaying a .jsonl log file."""
@@ -198,6 +191,7 @@ class TestReviewTool:
     ):
         """Tests selecting a session and choosing to re-enter."""
         # Sorted order: session (0), log (1), multichat (2). Select index 0.
+        # The main loop will run only once because reenter_session causes main to return.
         mock_numbered_menu.return_value = 0
         mock_action_menu.return_value = "e"
         mock_reenter = mocker.patch("aiterm.review.reenter_session")
