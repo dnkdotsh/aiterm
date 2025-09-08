@@ -33,7 +33,8 @@ def setup_logger():
     )
 
     console_handler = logging.StreamHandler(sys.stderr)
-    console_handler.setLevel(logging.INFO)
+    # Only show ERROR and CRITICAL messages on the console to avoid redundancy.
+    console_handler.setLevel(logging.ERROR)
     console_handler.setFormatter(formatter)
 
     # By the time this function is called, bootstrap.py has already ensured
@@ -47,6 +48,7 @@ def setup_logger():
             backupCount=5,
             encoding="utf-8",
         )
+        # The file handler should still capture INFO and WARNING messages.
         file_handler.setLevel(logging.INFO)
         file_handler.setFormatter(formatter)
     except OSError as e:

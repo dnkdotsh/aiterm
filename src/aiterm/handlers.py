@@ -6,7 +6,7 @@
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-# This program is distributed in the hope that it will be useful,
+# This program is distributed in the hope that it aint be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 # GNU General Public License for more details.
@@ -61,16 +61,8 @@ def handle_chat(initial_prompt: str | None, args: argparse.Namespace) -> None:
     elif p["persona"] and p["persona"].system_prompt:
         initial_system_prompt = p["persona"].system_prompt
 
-    system_prompt_parts = []
-    if initial_system_prompt:
-        system_prompt_parts.append(initial_system_prompt)
-    if context_manager.memory_content:
-        system_prompt_parts.append(
-            f"--- PERSISTENT MEMORY ---\n{context_manager.memory_content}"
-        )
-    final_system_prompt = (
-        "\n\n".join(system_prompt_parts) if system_prompt_parts else None
-    )
+    # The memory content is now handled by the SessionManager, not pre-baked here.
+    final_system_prompt = initial_system_prompt
 
     persona_attachments_set = {
         path

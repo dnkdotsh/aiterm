@@ -97,21 +97,32 @@ class ContextManager:
         exclusion_paths = {Path(p).expanduser() for p in exclusions}
 
         for p_str in paths:
-            path_obj = Path(p_str).expanduser()
-            if path_obj in exclusion_paths or not path_obj.exists():
-                continue
-            if path_obj.is_file():
-                if is_supported_archive_file(path_obj):
-                    if path_obj.suffix.lower() == ".zip":
-                        self._process_zip_file(path_obj, exclusion_paths)
-                    else:
-                        self._process_tar_file(path_obj, exclusion_paths)
-                elif is_supported_text_file(path_obj):
-                    self._process_text_file(path_obj)
-                elif is_supported_image_file(path_obj):
-                    self._process_image_file(path_obj)
-            elif path_obj.is_dir():
-                self._process_directory(path_obj, exclusion_paths)
+            try:
+                path_obj = Path(p_str).expanduser()
+                if path_obj in exclusion_paths or not path_obj.exists():
+                    continue
+                if path_obj.is_file():
+                    if is_supported_archive_file(path_obj):
+                        if path_obj.suffix.lower() == ".zip":
+                            self._process_zip_file(path_obj, exclusion_paths)
+                        else:
+                            self._process_tar_file(path_obj, exclusion_paths)
+                    elif is_supported_text_file(path_obj):
+                        self._process_text_file(path_obj)
+                    elif is_supported_image_file(path_obj):
+                        self._process_image_file(path_obj)
+                elif path_obj.is_dir():
+                    self._process_directory(path_obj, exclusion_paths)
+            except PermissionError:
+                log.warning("Permission denied for initial path argument: %s", p_str)
+                print(
+                    f"{SYSTEM_MSG}--> Permission denied: Could not access '{p_str}'. Skipping.{RESET_COLOR}"
+                )
+            except (OSError, RuntimeError) as e:
+                log.warning("Error processing initial path argument %s: %s", p_str, e)
+                print(
+                    f"{SYSTEM_MSG}--> Error processing path '{p_str}'. Skipping.{RESET_COLOR}"
+                )
 
     def _process_text_file(self, filepath: Path) -> None:
         try:
@@ -227,6 +238,11 @@ class ContextManager:
             except FileNotFoundError:
                 removed.append(path.name)
                 del self.attachments[path]
+            except PermissionError:
+                log.warning("Permission denied while refreshing %s.", path)
+                print(
+                    f"{SYSTEM_MSG}--> Permission denied on '{path.name}'. Could not refresh.{RESET_COLOR}"
+                )
             except OSError as e:
                 log.warning("Could not refresh file %s: %s", path, e)
 
@@ -292,27 +308,40 @@ class ContextManager:
         _print_tree(file_tree)
 
     def attach_file(self, path_str: str) -> None:
-        path = Path(path_str).expanduser()
-        if not path.exists():
-            print(f"{SYSTEM_MSG}--> Error: Path not found: {path_str}{RESET_COLOR}")
-            return
-        if path in self.attachments:
-            print(
-                f"{SYSTEM_MSG}--> Error: File '{path.name}' is already attached.{RESET_COLOR}"
-            )
-            return
+        try:
+            path = Path(path_str).expanduser()
+            if not path.exists():
+                print(f"{SYSTEM_MSG}--> Error: Path not found: {path_str}{RESET_COLOR}")
+                return
+            if path in self.attachments:
+                print(
+                    f"{SYSTEM_MSG}--> Error: File '{path.name}' is already attached.{RESET_COLOR}"
+                )
+                return
 
-        # Use a temporary instance to process just the new path
-        temp_context = ContextManager(
-            files_arg=[str(path)], memory_enabled=False, exclude_arg=[]
-        )
-        if temp_context.attachments:
-            self.attachments.update(temp_context.attachments)
-            print(f"{SYSTEM_MSG}--> Attached content from: {path.name}{RESET_COLOR}")
-        else:
-            print(
-                f"{SYSTEM_MSG}--> No readable text content found at path: {path.name}{RESET_COLOR}"
+            # Use a temporary instance to process just the new path
+            temp_context = ContextManager(
+                files_arg=[str(path)], memory_enabled=False, exclude_arg=[]
             )
+            if temp_context.attachments:
+                self.attachments.update(temp_context.attachments)
+                print(
+                    f"{SYSTEM_MSG}--> Attached content from: {path.name}{RESET_COLOR}"
+                )
+            else:
+                print(
+                    f"{SYSTEM_MSG}--> No readable text content found at path: {path.name}{RESET_COLOR}"
+                )
+        except PermissionError:
+            print(
+                f"{SYSTEM_MSG}--> Error: Permission denied for path: {path_str}{RESET_COLOR}"
+            )
+            log.warning("Permission denied while trying to attach '%s'.", path_str)
+        except (OSError, RuntimeError) as e:
+            print(
+                f"{SYSTEM_MSG}--> Error processing path: {path_str} ({e}){RESET_COLOR}"
+            )
+            log.warning("Error processing path '%s': %s", path_str, e)
 
     def detach(self, path_str: str) -> list[Path]:
         """

@@ -170,9 +170,17 @@ class SessionManager:
     def _assemble_full_system_prompt(self) -> str | None:
         """Constructs the complete system prompt from state."""
         prompt_parts = []
+        # 1. Add the base system prompt from the current persona or initial args.
         if self.state.system_prompt:
             prompt_parts.append(self.state.system_prompt)
 
+        # 2. Add the persistent memory content.
+        if self.context_manager.memory_content:
+            prompt_parts.append(
+                f"--- PERSISTENT MEMORY ---\n{self.context_manager.memory_content}"
+            )
+
+        # 3. Add the content of any attached files.
         if self.state.attachments:
             attachment_texts = [
                 f"--- FILE: {path.as_posix()} ---\n{attachment.content}"
