@@ -4,6 +4,7 @@ Tests for the user interface components in aiterm/chat_ui.py.
 """
 
 import json
+import os
 from pathlib import Path
 
 from aiterm import commands, config
@@ -55,7 +56,9 @@ class TestSingleChatUI:
                 "toolbar_separator": " | ",
             },
         )
-        mocker.patch("shutil.get_terminal_size", return_value=(120, 24))
+        mocker.patch(
+            "shutil.get_terminal_size", return_value=os.terminal_size((120, 24))
+        )
         mock_prompt_toolkit_app["app"].current_buffer.text = "live prompt"
 
         content = mock_chat_ui._get_bottom_toolbar_content()
@@ -71,6 +74,12 @@ class TestSingleChatUI:
         self, mocker, mock_chat_ui, mock_prompt_toolkit_app
     ):
         """Tests that the toolbar truncates content when terminal width is small."""
+        # Use non-zero values to ensure the token string is generated
+        mock_chat_ui.session.state.last_turn_tokens = {
+            "prompt": 5,
+            "completion": 10,
+            "total": 15,
+        }
         mocker.patch(
             "aiterm.chat_ui.app_settings.settings",
             {
@@ -82,12 +91,15 @@ class TestSingleChatUI:
                 "toolbar_separator": " | ",
             },
         )
-        mocker.patch("shutil.get_terminal_size", return_value=(40, 24))
+        mocker.patch(
+            "shutil.get_terminal_size", return_value=os.terminal_size((40, 24))
+        )
 
         content = mock_chat_ui._get_bottom_toolbar_content()
         content_text = "".join([part[1] for part in content])
 
-        assert "[P:0/C:0/R:0/T:0]" in content_text
+        # Check for the correct, non-zero token string
+        assert "[P:5/C:10/R:0/T:15]" in content_text
         assert "Live Context" in content_text
         assert "Model: gemini-1.5-flash" not in content_text  # Should be truncated
         assert "Session I/O" not in content_text  # Should be truncated
