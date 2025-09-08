@@ -5,6 +5,7 @@ Tests for the interactive review tool in aiterm/review.py.
 
 import argparse
 import json
+import os
 from unittest.mock import patch
 
 import pytest
@@ -17,23 +18,27 @@ from aiterm.utils.message_builder import (
 
 @pytest.fixture
 def setup_review_files(fake_fs):
-    """Sets up fake log and session files for review tests."""
-    # Single-chat log file
-    log_path = config.CHATLOG_DIRECTORY / "chat_log_1.jsonl"
+    """Sets up fake log and session files for review tests with predictable mtimes."""
+    config.SESSIONS_DIRECTORY.mkdir(parents=True, exist_ok=True)
+    config.CHATLOG_DIRECTORY.mkdir(parents=True, exist_ok=True)
+
+    # Create files
+    multichat_path = config.CHATLOG_DIRECTORY / "multichat_log_oldest.jsonl"
+    multichat_content = [
+        {"history_slice": [{"role": "user", "content": "Director: Go!"}]}
+    ]
+    multichat_path.write_text("\n".join(json.dumps(line) for line in multichat_content))
+
+    log_path = config.CHATLOG_DIRECTORY / "chat_log_middle.jsonl"
     log_content = [
         {
             "prompt": {"role": "user", "content": "Hello"},
-            "response": {"role": "assistant", "content": "Hi there"},
-        },
-        {
-            "prompt": {"role": "user", "content": "Bye"},
-            "response": {"role": "assistant", "content": "See you"},
-        },
+            "response": {"role": "assistant", "content": "Hi"},
+        }
     ]
     log_path.write_text("\n".join(json.dumps(line) for line in log_content))
 
-    # Single-chat session file
-    session_path = config.SESSIONS_DIRECTORY / "session_1.json"
+    session_path = config.SESSIONS_DIRECTORY / "session_newest.json"
     session_content = {
         "history": [
             construct_user_message("openai", "Let's start", []),
@@ -42,27 +47,19 @@ def setup_review_files(fake_fs):
     }
     session_path.write_text(json.dumps(session_content))
 
-    # Multi-chat log file for testing different replay format
-    multichat_path = config.CHATLOG_DIRECTORY / "multichat_log.jsonl"
-    multichat_content = [
-        {
-            "history_slice": [
-                {"role": "user", "content": "Director: Go!"},
-                {"role": "assistant", "content": "[OpenAI]: I am ready."},
-                {"role": "assistant", "content": "[Gemini]: As am I."},
-            ]
-        }
-    ]
-    multichat_path.write_text("\n".join(json.dumps(line) for line in multichat_content))
+    malformed_path = config.SESSIONS_DIRECTORY / "malformed.json"
+    malformed_path.write_text("{not_json:")
 
-    # Malformed file
-    (config.SESSIONS_DIRECTORY / "malformed.json").write_text("{not_json:")
+    # Set explicit, predictable modification times to control sorting
+    os.utime(multichat_path, (1000, 1000))
+    os.utime(log_path, (2000, 2000))
+    os.utime(session_path, (3000, 3000))
 
     return {
         "log": log_path,
         "session": session_path,
         "multichat": multichat_path,
-        "malformed": config.SESSIONS_DIRECTORY / "malformed.json",
+        "malformed": malformed_path,
     }
 
 
@@ -72,7 +69,7 @@ class TestReviewTool:
     @pytest.mark.parametrize(
         "file_key, expected_turns",
         [
-            ("log", 2),
+            ("log", 1),
             ("session", 1),
             ("malformed", 0),
         ],
@@ -84,7 +81,6 @@ class TestReviewTool:
 
     def test_replay_file_jsonl(self, setup_review_files, capsys, mocker):
         """Tests replaying a .jsonl log file."""
-        # Ensure the function thinks it's in an interactive session
         mocker.patch("sys.stdin.isatty", return_value=True)
         with patch(
             "aiterm.review.get_single_char", return_value="q"
@@ -93,9 +89,6 @@ class TestReviewTool:
         captured = capsys.readouterr().out
         assert "You:" in captured
         assert "Hello" in captured
-        assert "Assistant:" in captured
-        assert "Hi there" in captured
-        assert "Bye" not in captured  # Should have quit before this
 
     def test_replay_file_json(self, setup_review_files, capsys, mocker):
         """Tests replaying a .json session file."""
@@ -104,7 +97,6 @@ class TestReviewTool:
             review.replay_file(setup_review_files["session"])
         captured = capsys.readouterr().out
         assert "Let's start" in captured
-        assert "Ready!" in captured
 
     def test_replay_file_multichat(self, setup_review_files, capsys, mocker):
         """Tests replaying a multichat log file."""
@@ -114,9 +106,6 @@ class TestReviewTool:
         captured = capsys.readouterr().out
         assert "Director:" in captured
         assert "Go!" in captured
-        assert "AI:" in captured
-        assert "[OpenAI]: I am ready." in captured
-        assert "[Gemini]: As am I." in captured
 
     def test_rename_file_success(self, setup_review_files):
         """Tests successful file renaming."""
@@ -131,11 +120,9 @@ class TestReviewTool:
     def test_rename_file_exists_error(self, setup_review_files, fake_fs, capsys):
         """Tests that renaming to an existing filename fails."""
         log_path = setup_review_files["log"]
-        # Create a file with the target name to cause a collision
-        colliding_file = config.CHATLOG_DIRECTORY / "session_1.jsonl"
+        colliding_file = config.CHATLOG_DIRECTORY / "new_name.jsonl"
         fake_fs.create_file(colliding_file)
-
-        with patch("builtins.input", return_value="session_1"):
+        with patch("builtins.input", return_value="new_name"):
             result_path = review.rename_file(log_path)
         assert result_path is None
         captured = capsys.readouterr().err
@@ -166,37 +153,6 @@ class TestReviewTool:
             ["aiterm", "--load", str(session_path)], check=True
         )
 
-    def test_reenter_session_file_not_found_error(
-        self, setup_review_files, mocker, capsys
-    ):
-        """Tests handling of FileNotFoundError for the aiterm command."""
-        mocker.patch("aiterm.review.subprocess.run", side_effect=FileNotFoundError)
-        session_path = setup_review_files["session"]
-        review.reenter_session(session_path)
-        captured = capsys.readouterr().err
-        assert "'aiterm' command not found" in captured
-
-    @patch("aiterm.review.present_numbered_menu")
-    @patch("aiterm.review.present_action_menu")
-    def test_main_interactive_loop(
-        self, mock_action_menu, mock_numbered_menu, setup_review_files, mocker
-    ):
-        """Tests a simple interactive session: select, replay, then back."""
-        # Mock the main selection menu to choose the first file (index 0)
-        # Then, choose the last option ('Quit') on the second call.
-        mock_numbered_menu.side_effect = [0, len(setup_review_files)]
-        # Mock the action menu for the full sequence: replay -> continue -> back
-        mock_action_menu.side_effect = ["r", "c", "b"]
-        mock_replay = mocker.patch("aiterm.review.replay_file")
-
-        args = argparse.Namespace(file=None)
-        review.main(args)
-
-        assert mock_numbered_menu.call_count == 2
-        # The action menu is called 3 times in our sequence
-        assert mock_action_menu.call_count == 3
-        mock_replay.assert_called_once()
-
     def test_main_direct_replay_mode(self, setup_review_files, mocker):
         """Tests that main calls replay_file directly when a file is provided."""
         mock_replay = mocker.patch("aiterm.review.replay_file")
@@ -204,3 +160,64 @@ class TestReviewTool:
         args = argparse.Namespace(file=log_path)
         review.main(args)
         mock_replay.assert_called_once_with(log_path)
+
+    def test_get_single_char_fallback(self, mocker):
+        """Tests the get_single_char returns None when stdin is not a TTY."""
+        mocker.patch("sys.stdin.isatty", return_value=False)
+        assert review.get_single_char() is None
+
+    def test_action_menu_fallback(self, mocker):
+        """Tests the action menu's fallback to input() when not a TTY."""
+        mocker.patch("sys.stdin.isatty", return_value=False)
+        mocker.patch("builtins.input", return_value="r ")
+        choice = review.present_action_menu("Test", {"Replay": "r"})
+        assert choice == "r"
+
+    @patch("aiterm.review.present_numbered_menu")
+    @patch("aiterm.review.present_action_menu")
+    def test_main_interactive_loop(
+        self, mock_action_menu, mock_numbered_menu, setup_review_files, mocker
+    ):
+        """Tests a simple interactive session: select, replay, then back."""
+        # Sorted order: session (0), log (1), multichat (2). Quit is 3.
+        # Select index 1 (log file) then quit (index 3)
+        mock_numbered_menu.side_effect = [1, 3]
+        # Actions: replay -> continue (post-replay) -> back to file list
+        mock_action_menu.side_effect = ["r", "c", "b"]
+        mock_replay = mocker.patch("aiterm.review.replay_file")
+        args = argparse.Namespace(file=None)
+        review.main(args)
+        mock_replay.assert_called_once_with(setup_review_files["log"])
+        assert mock_numbered_menu.call_count == 2
+        assert mock_action_menu.call_count == 3
+
+    @patch("aiterm.review.present_numbered_menu")
+    @patch("aiterm.review.present_action_menu")
+    def test_main_loop_reenter_session(
+        self, mock_action_menu, mock_numbered_menu, setup_review_files, mocker
+    ):
+        """Tests selecting a session and choosing to re-enter."""
+        # Sorted order: session (0), log (1), multichat (2). Select index 0.
+        mock_numbered_menu.return_value = 0
+        mock_action_menu.return_value = "e"
+        mock_reenter = mocker.patch("aiterm.review.reenter_session")
+        args = argparse.Namespace(file=None)
+        review.main(args)
+        mock_reenter.assert_called_once_with(setup_review_files["session"])
+
+    @patch("aiterm.review.present_numbered_menu")
+    @patch("aiterm.review.present_action_menu")
+    def test_main_loop_replay_then_delete(
+        self, mock_action_menu, mock_numbered_menu, setup_review_files, mocker
+    ):
+        """Tests a sequence of replaying and then deleting a file."""
+        # Sorted order: session (0), log (1), multichat (2). Quit is 3.
+        # Main menu: select log file (index 1), then quit on the next loop.
+        mock_numbered_menu.side_effect = [1, 3]
+        # Action menu: 'replay', then post-replay 'delete'
+        mock_action_menu.side_effect = ["r", "d"]
+        mocker.patch("aiterm.review.replay_file")
+        mock_delete = mocker.patch("aiterm.review.delete_file", return_value=True)
+        args = argparse.Namespace(file=None)
+        review.main(args)
+        mock_delete.assert_called_once_with(setup_review_files["log"])

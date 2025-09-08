@@ -7,9 +7,11 @@ import json
 import os
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 from aiterm import commands, config
+from aiterm.api_client import ApiRequestError
 from aiterm.personas import Persona
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.styles import Style
@@ -168,6 +170,77 @@ class TestSingleChatUI:
         mock_chat_ui._log_turn(log_path)
         assert "Could not write to session log file" in caplog.text
 
+    def test_run_loop_keyboard_interrupt(self, mocker, mock_chat_ui):
+        """Test the run loop exits cleanly on KeyboardInterrupt."""
+        mocker.patch(
+            "aiterm.chat_ui.PromptSession.prompt", side_effect=KeyboardInterrupt
+        )
+        # Mock the instance method, not the class method
+        mock_chat_ui.session.cleanup = MagicMock()
+        mock_chat_ui.run()
+        mock_chat_ui.session.cleanup.assert_called_once()
+
+    def test_run_loop_empty_input(self, mocker, mock_chat_ui):
+        """Test that the run loop ignores empty input and continues."""
+        mocker.patch(
+            "aiterm.chat_ui.PromptSession.prompt",
+            side_effect=["", "  ", KeyboardInterrupt],
+        )
+        mock_chat_ui.session.take_turn = MagicMock()
+        mock_chat_ui.run()
+        # take_turn should not have been called
+        mock_chat_ui.session.take_turn.assert_not_called()
+
+    def test_run_loop_slash_command(self, mocker, mock_chat_ui):
+        """Test that the run loop correctly handles a slash command."""
+        mock_handler = MagicMock()
+        mocker.patch.dict(commands.COMMAND_MAP, {"/help": mock_handler})
+        mocker.patch(
+            "aiterm.chat_ui.PromptSession.prompt",
+            side_effect=["/help", KeyboardInterrupt],
+        )
+        mock_chat_ui.session.take_turn = MagicMock()
+
+        mock_chat_ui.run()
+
+        mock_handler.assert_called_once()
+        mock_chat_ui.session.take_turn.assert_not_called()
+
+    def test_run_loop_ui_refresh(self, mocker, mock_chat_ui):
+        """Tests that the UI is refreshed when the state flag is set."""
+        mock_get_app = mocker.patch("aiterm.chat_ui.get_app")
+        mock_get_app.return_value.invalidate.side_effect = Exception("Simulated error")
+
+        def set_refresh_flag(args, session):
+            session.state.ui_refresh_needed = True
+
+        mock_handler = MagicMock(side_effect=set_refresh_flag)
+        mocker.patch.dict(commands.COMMAND_MAP, {"/help": mock_handler})
+        mocker.patch(
+            "aiterm.chat_ui.PromptSession.prompt",
+            side_effect=["/help", KeyboardInterrupt],
+        )
+
+        mock_chat_ui.run()
+
+        mock_get_app.return_value.invalidate.assert_called_once()
+        assert mock_chat_ui.session.state.ui_refresh_needed is False
+
+    def test_run_loop_api_error_handling(self, mocker, mock_chat_ui, capsys):
+        """Tests that an ApiRequestError is caught and handled gracefully."""
+        mock_chat_ui.session.take_turn = MagicMock(
+            side_effect=ApiRequestError("Test API Failure")
+        )
+        mock_chat_ui.session.cleanup = MagicMock()
+        mocker.patch(
+            "aiterm.chat_ui.PromptSession.prompt",
+            side_effect=["first prompt", KeyboardInterrupt],
+        )
+        mock_chat_ui.run()
+        captured = capsys.readouterr().out
+        assert "API Error: Test API Failure" in captured
+        mock_chat_ui.session.cleanup.assert_called_once()
+
 
 class TestMultiChatUI:
     """Test suite for the MultiChatUI class."""
@@ -209,3 +282,36 @@ class TestMultiChatUI:
         result = mock_multichat_ui._handle_slash_command("/unknown", history, log_path)
         assert result is False
         assert "Unknown command: /unknown" in capsys.readouterr().out
+
+    def test_run_loop_flow(self, mocker, mock_multichat_ui):
+        """Tests the basic flow of the multichat run loop."""
+        mock_multichat_ui.session.primary_engine_name = "gemini"
+        mock_prompt = mocker.patch(
+            "aiterm.chat_ui.prompt",
+            side_effect=["hello", "/help", KeyboardInterrupt],
+        )
+        # FIX: Configure mock handler to return False to prevent loop exit
+        mock_handler = MagicMock(return_value=False)
+        mocker.patch.dict(commands.MULTICHAT_COMMAND_MAP, {"/help": mock_handler})
+
+        mock_multichat_ui.run()
+
+        # Check that a normal prompt was processed
+        mock_multichat_ui.session.process_turn.assert_called_once()
+        # Check that the slash command was handled
+        mock_handler.assert_called_once()
+        # Check that prompt was called for all inputs
+        assert mock_prompt.call_count == 3
+
+    def test_run_loop_initial_prompt(self, mocker, mock_multichat_ui):
+        """Tests that an initial prompt is processed before the loop starts."""
+        mock_multichat_ui.session.primary_engine_name = "gemini"
+        mocker.patch("aiterm.chat_ui.prompt", side_effect=KeyboardInterrupt)
+        mock_multichat_ui.initial_prompt = "Initial question"
+
+        mock_multichat_ui.run()
+
+        mock_multichat_ui.session.process_turn.assert_called_once()
+        call_args = mock_multichat_ui.session.process_turn.call_args
+        assert call_args[0][0] == "Initial question"
+        assert call_args.kwargs["is_first_turn"] is True

@@ -37,6 +37,7 @@ from prompt_toolkit.styles import Style
 
 from . import commands, config, theme_manager
 from . import settings as app_settings
+from .api_client import ApiRequestError
 from .logger import log
 from .managers.multichat_manager import MultiChatSession
 from .managers.session_manager import SessionManager
@@ -226,9 +227,12 @@ class SingleChatUI:
                             log.warning("Could not invalidate prompt app: %s", e)
                         self.session.state.ui_refresh_needed = False
                     continue
-
-                if self.session.take_turn(user_input, first_turn):
-                    self._log_turn(log_filepath)
+                try:
+                    if self.session.take_turn(user_input, first_turn):
+                        self._log_turn(log_filepath)
+                except ApiRequestError as e:
+                    print(f"\n{SYSTEM_MSG}API Error: {e}{RESET_COLOR}")
+                    # Allow the session to continue after an API error
 
                 first_turn = False
         except (KeyboardInterrupt, EOFError):
