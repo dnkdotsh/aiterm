@@ -23,11 +23,14 @@ isolates complex business logic from simple state management.
 from __future__ import annotations
 
 import base64
+import json
+import re
 import sys
 from typing import TYPE_CHECKING
 
 from . import api_client, prompts
 from . import settings as app_settings
+from .logger import log
 from .utils.file_processor import log_image_generation, save_image_and_get_path
 from .utils.formatters import ASSISTANT_PROMPT, RESET_COLOR, SYSTEM_MSG
 from .utils.message_builder import (
@@ -82,6 +85,82 @@ def rename_log_with_ai(session: SessionManager, log_filepath) -> None:
     )
     if suggested_name:
         session._rename_log_file(log_filepath, suggested_name)
+
+
+def finalize_session_with_ai(session: SessionManager, log_filepath) -> None:
+    """
+    Uses a single AI call to both consolidate memory and generate a log file name,
+    if required by the session state. Falls back to separate calls if needed.
+    """
+    should_update_memory = session.state.memory_enabled
+    # Use getattr for safety in case session_name was not set on the instance
+    session_was_named = getattr(session, "session_name", None)
+    should_rename_log = not session_was_named and not session.state.custom_log_rename
+
+    if not should_update_memory and not should_rename_log:
+        if session.state.memory_enabled is False:  # Only print if explicitly disabled
+            print(
+                f"{SYSTEM_MSG}--> Persistent memory not enabled, skipping update.{RESET_COLOR}"
+            )
+        return  # Nothing to do with AI
+
+    # If only one task is needed, just do that one to save on a complex prompt.
+    if not should_update_memory and should_rename_log:
+        rename_log_with_ai(session, log_filepath)
+        return
+    if should_update_memory and not should_rename_log:
+        consolidate_memory(session)
+        return
+
+    # --- Both memory update and log renaming are needed ---
+    print(f"{SYSTEM_MSG}--> Finalizing session (memory & log name)...{RESET_COLOR}")
+    existing_ltm = session.context_manager._read_memory_file()
+    session_content = session._get_history_for_helpers()
+    prompt_text = prompts.SESSION_FINALIZATION_PROMPT.format(
+        existing_ltm=existing_ltm, session_content=session_content
+    )
+
+    response_text, _ = session._perform_helper_request(prompt_text, None)
+    parsed_successfully = False
+    if response_text:
+        try:
+            # Models might wrap the JSON in markdown ` ```json ... ``` `, so we find it
+            json_match = re.search(r"\{.*\}", response_text, re.DOTALL)
+            if not json_match:
+                raise json.JSONDecodeError(
+                    "No JSON object found in response", response_text, 0
+                )
+
+            json_str = json_match.group(0)
+            data = json.loads(json_str)
+            updated_memory = data.get("updated_memory")
+            log_filename = data.get("log_filename")
+
+            if isinstance(updated_memory, str) and isinstance(log_filename, str):
+                session.context_manager._write_memory_file(updated_memory)
+                session._rename_log_file(log_filepath, log_filename)
+                print(f"{SYSTEM_MSG}--> Session finalized successfully.{RESET_COLOR}")
+                parsed_successfully = True
+            else:
+                log.warning(
+                    "Combined finalization JSON was missing required string keys."
+                )
+
+        except (json.JSONDecodeError, AttributeError, TypeError) as e:
+            log.warning(
+                "Combined session finalization failed to parse JSON: %s. Falling back.",
+                e,
+            )
+            print(
+                f"{SYSTEM_MSG}--> AI response was not valid JSON. Falling back to separate tasks.{RESET_COLOR}"
+            )
+    else:
+        log.warning("Combined session finalization call failed. Falling back.")
+
+    # Fallback to separate calls if the combined one failed
+    if not parsed_successfully:
+        consolidate_memory(session)
+        rename_log_with_ai(session, log_filepath)
 
 
 # --- Image Generation Workflow ---

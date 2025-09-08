@@ -58,6 +58,19 @@ LOG_RENAMING_PROMPT = (
     "CHAT LOG EXCERPT:\n---\n{log_content}\n---"
 )
 
+SESSION_FINALIZATION_PROMPT = (
+    "You are a session finalization agent. Based on the provided chat session and existing memory, perform two tasks:\n"
+    "1. **Memory Consolidation**: Distill the crucial information from the 'NEW CHAT SESSION' and integrate it into the 'EXISTING PERSISTENT MEMORY'. "
+    "Synthesize related topics, update existing facts, and discard conversational fluff. The final output must be a dense, factual summary.\n"
+    "2. **Log Renaming**: Generate a concise, descriptive, filename-safe title for the chat session. Use snake_case. "
+    "The title should be 3-5 words. Do not include any file extension like '.jsonl'.\n\n"
+    'Your final response MUST be a valid JSON object with two string keys: "updated_memory" and "log_filename".\n\n'
+    "--- EXISTING PERSISTENT MEMORY ---\n{existing_ltm}\n\n"
+    "--- NEW CHAT SESSION TO INTEGRATE ---\n{session_content}\n\n"
+    "--- JSON RESPONSE ---"
+)
+
+
 CONTINUATION_PROMPT = (
     "Please continue the conversation based on the history provided. "
     "Offer a new insight, ask a follow-up question, or rebut the last point made."

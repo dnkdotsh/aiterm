@@ -55,6 +55,8 @@ class SessionManager:
         self.state = state
         self.context_manager = context_manager
         self.image_workflow = workflows.ImageGenerationWorkflow(self)
+        # This will be set by the UI upon running the session.
+        self.session_name: str | None = None
 
     # --- Core Orchestration Methods ---
 
@@ -119,23 +121,23 @@ class SessionManager:
 
     def cleanup(self, session_name: str | None, log_filepath: Path) -> None:
         """Performs cleanup tasks at the end of a session."""
+        # The UI sets this, making it available for workflows.
+        self.session_name = session_name
+
         if (
             not self.state.force_quit
             and not self.state.exit_without_memory
             and log_filepath.exists()
             and self.state.history
         ):
-            if self.state.memory_enabled:
-                workflows.consolidate_memory(self)
-            else:
-                print(
-                    f"{SYSTEM_MSG}--> Persistent memory not enabled, skipping update.{RESET_COLOR}"
-                )
+            # The new workflow handles all conditional logic for memory/renaming.
+            workflows.finalize_session_with_ai(self, log_filepath)
 
+            # Manual rename via /exit command always takes precedence over AI.
+            # The workflow will see custom_log_rename and skip AI renaming,
+            # so we must handle it here.
             if self.state.custom_log_rename:
                 self._rename_log_file(log_filepath, self.state.custom_log_rename)
-            elif not session_name:
-                workflows.rename_log_with_ai(self, log_filepath)
 
         if self.state.debug_active:
             self._save_debug_log(log_filepath.stem)
