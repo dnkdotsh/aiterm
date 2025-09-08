@@ -116,6 +116,49 @@ def handle_remember(args: list[str], session: SessionManager) -> None:
         workflows.inject_memory(session, " ".join(args))
 
 
+def handle_forget(args: list[str], session: SessionManager) -> None:
+    """Forgets the last N turns or a topic from memory."""
+    if not args:
+        # Default case: /forget with no args forgets the last turn.
+        args = ["1"]
+
+    if "--memory" in args:
+        topic_parts = [arg for arg in args if arg != "--memory"]
+        if not topic_parts:
+            print(f"{SYSTEM_MSG}--> Usage: /forget <topic> --memory{RESET_COLOR}")
+            return
+        topic = " ".join(topic_parts)
+        workflows.scrub_memory(session, topic)
+        return
+
+    try:
+        num_turns_to_forget = int(args[0])
+        if num_turns_to_forget <= 0:
+            raise ValueError
+
+        num_history_items = num_turns_to_forget * 2
+        current_history_len = len(session.state.history)
+
+        if num_history_items > current_history_len:
+            print(
+                f"{SYSTEM_MSG}--> Cannot forget {num_turns_to_forget} turns. "
+                f"History only contains {current_history_len // 2} turns.{RESET_COLOR}"
+            )
+            return
+
+        session.state.history = session.state.history[:-num_history_items]
+        plural = "s" if num_turns_to_forget > 1 else ""
+        print(
+            f"{SYSTEM_MSG}--> The last {num_turns_to_forget} conversational turn{plural} "
+            f"has been removed from context.{RESET_COLOR}"
+        )
+
+    except (ValueError, IndexError):
+        print(
+            f"{SYSTEM_MSG}--> Usage: /forget [N] OR /forget <topic> --memory{RESET_COLOR}"
+        )
+
+
 def handle_max_tokens(args: list[str], session: SessionManager) -> None:
     if args and args[0].isdigit():
         session.state.max_tokens = int(args[0])
@@ -823,6 +866,7 @@ COMMAND_MAP = {
     "/debug": handle_debug,
     "/memory": handle_memory,
     "/remember": handle_remember,
+    "/forget": handle_forget,
     "/max-tokens": handle_max_tokens,
     "/clear": handle_clear,
     "/model": handle_model,

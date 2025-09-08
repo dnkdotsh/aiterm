@@ -72,6 +72,32 @@ def inject_memory(session: SessionManager, fact: str) -> None:
         print(f"{SYSTEM_MSG}--> Persistent memory updated successfully.{RESET_COLOR}")
 
 
+def scrub_memory(session: SessionManager, topic: str) -> None:
+    """Uses an AI helper to rewrite persistent memory, removing a specific topic."""
+    print(
+        f"{SYSTEM_MSG}--> Rewriting persistent memory to forget '{topic}'...{RESET_COLOR}"
+    )
+    current_memory = session.context_manager._read_memory_file()
+    if not current_memory.strip():
+        print(
+            f"{SYSTEM_MSG}--> Persistent memory is empty. Nothing to forget.{RESET_COLOR}"
+        )
+        return
+
+    prompt_text = prompts.MEMORY_SCRUB_PROMPT.format(
+        existing_ltm=current_memory, topic=topic
+    )
+    # Use a generous token limit, as the rewritten memory could be long.
+    rewritten_memory, _ = session._perform_helper_request(prompt_text, None)
+    if rewritten_memory:
+        session.context_manager._write_memory_file(rewritten_memory)
+        print(f"{SYSTEM_MSG}--> Persistent memory updated successfully.{RESET_COLOR}")
+    else:
+        print(
+            f"{SYSTEM_MSG}--> Failed to rewrite persistent memory. The operation was cancelled.{RESET_COLOR}"
+        )
+
+
 def rename_log_with_ai(session: SessionManager, log_filepath) -> None:
     """Uses an AI helper to generate a descriptive name for a log file."""
     print(

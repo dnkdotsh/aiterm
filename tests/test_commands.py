@@ -535,6 +535,41 @@ class TestCommands:
         captured = capsys.readouterr()
         assert "Theme 'nonexistent' not found" in captured.out
 
+    def test_handle_forget_turns(self, mock_session_manager):
+        """Tests /forget N to remove the last N turns."""
+        mock_session_manager.state.history = [
+            {"role": "user", "content": "turn 1"},
+            {"role": "assistant", "content": "turn 1"},
+            {"role": "user", "content": "turn 2"},
+            {"role": "assistant", "content": "turn 2"},
+        ]
+        commands.handle_forget(["1"], mock_session_manager)
+        assert len(mock_session_manager.state.history) == 2
+        assert mock_session_manager.state.history[-1]["content"] == "turn 1"
+
+    def test_handle_forget_default_one_turn(self, mock_session_manager):
+        """Tests that /forget with no args removes one turn."""
+        mock_session_manager.state.history = [
+            {"role": "user", "content": "turn 1"},
+            {"role": "assistant", "content": "turn 1"},
+        ]
+        commands.handle_forget([], mock_session_manager)
+        assert len(mock_session_manager.state.history) == 0
+
+    def test_handle_forget_too_many_turns(self, mock_session_manager, capsys):
+        """Tests /forget N where N is larger than the history."""
+        mock_session_manager.state.history = [{"role": "user", "content": "turn 1"}]
+        commands.handle_forget(["2"], mock_session_manager)
+        assert len(mock_session_manager.state.history) == 1
+        captured = capsys.readouterr()
+        assert "Cannot forget 2 turns" in captured.out
+
+    def test_handle_forget_memory(self, mock_session_manager, mocker):
+        """Tests /forget <topic> --memory delegates to the workflow."""
+        mock_scrub = mocker.patch("aiterm.commands.workflows.scrub_memory")
+        commands.handle_forget(["aiterm", "tool", "--memory"], mock_session_manager)
+        mock_scrub.assert_called_once_with(mock_session_manager, "aiterm tool")
+
 
 class TestMultiChatCommands:
     """Test suite for multi-chat specific slash command handlers."""

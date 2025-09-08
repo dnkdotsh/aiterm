@@ -62,6 +62,8 @@ class TestUIHelpers:
         assert "Interactive Chat Commands" in captured
         assert "/exit" in captured
         assert "/persona" in captured
+        assert "/forget [N | <topic> --memory]" in captured
+        assert "Warning: The --memory flag" in captured
         assert "/ai <gpt|gem>" not in captured
 
     def test_display_help_multichat(self, capsys):

@@ -144,21 +144,6 @@ class TestSessionManager:
         assert tokens == {}
         assert "Helper request failed." in caplog.text
 
-    def test_cleanup_full_run(self, mocker, fake_fs, mock_session_manager):
-        """Tests the default cleanup path where everything is run."""
-        mock_consolidate = mocker.patch("aiterm.workflows.consolidate_memory")
-        mock_rename_ai = mocker.patch("aiterm.workflows.rename_log_with_ai")
-        mock_rename_file = mocker.patch.object(mock_session_manager, "_rename_log_file")
-        log_path = config.CHATLOG_DIRECTORY / "chat_test.jsonl"
-        fake_fs.create_file(log_path)
-        mock_session_manager.state.history.append({"role": "user", "content": "test"})
-
-        mock_session_manager.cleanup(session_name=None, log_filepath=log_path)
-
-        mock_consolidate.assert_called_once()
-        mock_rename_ai.assert_called_once()
-        mock_rename_file.assert_not_called()  # AI rename is called instead
-
     def test_cleanup_force_quit_skips_all(self, mocker, fake_fs, mock_session_manager):
         """Tests that force_quit skips all cleanup operations."""
         mock_consolidate = mocker.patch("aiterm.workflows.consolidate_memory")

@@ -81,6 +81,10 @@ Interactive Chat Commands:
   /memory           View the content of the persistent memory file.
   /remember [text]  If text is provided, inject it into persistent memory.
                     If no text, consolidates current chat into memory.
+  /forget [N | <topic> --memory]
+                    Removes the last N conversational turns from context (default: 1).
+                    With --memory, it rewrites persistent memory to exclude <topic>.
+                    Warning: The --memory flag is a destructive, AI-powered operation.
   /clear            Clear the current conversation history.
   /history          Print the JSON of the current conversation history.
   /state            Print the current session state (engine, model, etc.).

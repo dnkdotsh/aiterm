@@ -92,6 +92,52 @@ class TestAIHelperWorkflows:
         mock_helper.assert_called_once()
         mock_rename.assert_called_once_with(log_path, "ai_suggested_name")
 
+    def test_scrub_memory(self, mocker, mock_session_manager):
+        """Tests that scrub_memory formats the prompt and writes the result."""
+        # Arrange
+        mocker.patch.object(
+            mock_session_manager.context_manager,
+            "_read_memory_file",
+            return_value="existing memory about aiterm",
+        )
+        mock_helper = mocker.patch.object(
+            mock_session_manager,
+            "_perform_helper_request",
+            return_value=("rewritten memory", {}),
+        )
+        mock_write = mocker.patch.object(
+            mock_session_manager.context_manager, "_write_memory_file"
+        )
+        topic = "aiterm"
+        expected_prompt = prompts.MEMORY_SCRUB_PROMPT.format(
+            existing_ltm="existing memory about aiterm", topic=topic
+        )
+
+        # Act
+        workflows.scrub_memory(mock_session_manager, topic)
+
+        # Assert
+        mock_helper.assert_called_once_with(expected_prompt, None)
+        mock_write.assert_called_once_with("rewritten memory")
+
+    def test_scrub_memory_empty(self, mocker, mock_session_manager, capsys):
+        """Tests that scrub_memory does nothing if memory is empty."""
+        mocker.patch.object(
+            mock_session_manager.context_manager,
+            "_read_memory_file",
+            return_value="",
+        )
+        mock_helper = mocker.patch.object(
+            mock_session_manager,
+            "_perform_helper_request",
+        )
+
+        workflows.scrub_memory(mock_session_manager, "aiterm")
+
+        mock_helper.assert_not_called()
+        captured = capsys.readouterr().out
+        assert "Persistent memory is empty" in captured
+
 
 class TestPerformImageGeneration:
     """Tests for the core _perform_image_generation function."""

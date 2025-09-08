@@ -50,6 +50,17 @@ DIRECT_MEMORY_INJECTION_PROMPT = (
     "--- UPDATED PERSISTENT MEMORY ---"
 )
 
+MEMORY_SCRUB_PROMPT = (
+    "You are a memory management agent. Your task is to rewrite the 'EXISTING PERSISTENT MEMORY' to completely remove "
+    "any information related to the 'TOPIC TO FORGET'. You must preserve all other facts, maintain the original tone "
+    "and conciseness, and ensure the rewritten memory is a coherent whole. The final output must be ONLY the rewritten "
+    "memory text, with no preamble, conversational text, or markdown formatting.\n\n"
+    "--- EXISTING PERSISTENT MEMORY ---\n{existing_ltm}\n\n"
+    "--- TOPIC TO FORGET ---\n{topic}\n\n"
+    "--- REWRITTEN PERSISTENT MEMORY ---"
+)
+
+
 LOG_RENAMING_PROMPT = (
     "Based on the following chat log, generate a concise, descriptive, filename-safe title. "
     "Use snake_case. The title should be 3-5 words. "
