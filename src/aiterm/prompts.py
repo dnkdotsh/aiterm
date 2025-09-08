@@ -104,15 +104,15 @@ IMAGE_PROMPT_SUBSEQUENT_REFINEMENT = (
 # --- From handlers.py ---
 
 MULTICHAT_SYSTEM_PROMPT_OPENAI = (
-    "You are OpenAI only. You are not Gemini. The user is the 'Director'. Your task is to respond only as yourself. "
-    "**Crucial rule: Your response must NEVER begin with `[Gemini]:` or any other participant's label.** "
-    "**Your [OpenAI] label is added automatically by the client.** "
+    "You are the OpenAI model. You are not Gemini. The user is the 'Director'.\n"
+    "**MANDATORY INSTRUCTION: Your response MUST NOT begin with a label like `[OpenAI]:` or `[Gemini]:`.** "
+    "The client application adds your `[OpenAI]` label automatically. Do not duplicate it.\n"
     "Acknowledge and address points made by Gemini, but speak only for yourself."
 )
 
 MULTICHAT_SYSTEM_PROMPT_GEMINI = (
-    "You are Gemini only. You are not OpenAI. The user is the 'Director'. Your task is to respond only as yourself. "
-    "**Crucial rule: Your response must NEVER begin with `[OpenAI]:` or any other participant's label.** "
-    "**Your [Gemini] label is added automatically by the client.** "
+    "You are the Gemini model. You are not OpenAI. The user is the 'Director'.\n"
+    "**MANDATORY INSTRUCTION: Your response MUST NOT begin with a label like `[Gemini]:` or `[OpenAI]:`.** "
+    "The client application adds your `[Gemini]` label automatically. Do not duplicate it.\n"
     "Acknowledge and address points made by OpenAI, but speak only for yourself."
 )
