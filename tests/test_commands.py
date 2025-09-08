@@ -402,6 +402,13 @@ class TestCommands:
             == mock_openai_session_manager.state.attachments
         )
 
+    def test_handle_persona_not_found(self, mock_session_manager, mocker, capsys):
+        """Tests applying a persona that does not exist."""
+        mocker.patch("aiterm.commands.persona_manager.load_persona", return_value=None)
+        commands.handle_persona(["nonexistent"], mock_session_manager)
+        captured = capsys.readouterr()
+        assert "Persona 'nonexistent' not found." in captured.out
+
     def test_handle_detach(self, mock_session_manager):
         """Tests that /detach calls the context manager and adds a system message."""
         detached_path = Path("/fake/file.txt")
