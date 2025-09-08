@@ -61,7 +61,7 @@ class TestPersonas:
         abs_file = Path(abs_path_str)
         fake_fs.create_file(abs_file)
         # Create a file in the user's home dir
-        home_file = Path("/home/user/docs/home.txt")
+        home_file = Path(os.path.abspath("/home/user/docs/home.txt"))
         fake_fs.create_file(home_file)
 
         raw_paths = ["relative.txt", abs_path_str, "~/docs/home.txt"]
