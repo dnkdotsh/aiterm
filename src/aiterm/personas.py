@@ -99,7 +99,7 @@ def _resolve_attachment_paths(persona_path: Path, attachments: list[str]) -> lis
         # If not absolute, resolve relative to the persona's directory
         if not p.is_absolute():
             p = base_dir / p
-        resolved_paths.append(p.resolve())
+        resolved_paths.append(p)
     return resolved_paths
 
 

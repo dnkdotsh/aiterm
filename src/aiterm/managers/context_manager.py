@@ -94,10 +94,10 @@ class ContextManager:
         if use_memory:
             self.memory_content = self._read_memory_file()
 
-        exclusion_paths = {Path(p).expanduser().resolve() for p in exclusions}
+        exclusion_paths = {Path(p).expanduser() for p in exclusions}
 
         for p_str in paths:
-            path_obj = Path(p_str).expanduser().resolve()
+            path_obj = Path(p_str).expanduser()
             if path_obj in exclusion_paths or not path_obj.exists():
                 continue
             if path_obj.is_file():
@@ -184,14 +184,12 @@ class ContextManager:
 
     def _process_directory(self, dir_path: Path, exclusion_paths: set[Path]) -> None:
         for root, dirs, files in os.walk(dir_path, topdown=True):
-            root_path = Path(root).expanduser().resolve()
+            root_path = Path(root).expanduser()
             dirs[:] = [
-                d
-                for d in dirs
-                if (root_path / d).expanduser().resolve() not in exclusion_paths
+                d for d in dirs if (root_path / d).expanduser() not in exclusion_paths
             ]
             for name in files:
-                file_path = (root_path / name).expanduser().resolve()
+                file_path = (root_path / name).expanduser()
                 if file_path in exclusion_paths:
                     continue
                 if is_supported_text_file(file_path):
@@ -290,11 +288,11 @@ class ContextManager:
                     # It's a file, print the size on the same line
                     print(f" ({format_bytes(content)})")
 
-        print(f"{common_base}/")
+        print(f"{common_base}{os.path.sep}")
         _print_tree(file_tree)
 
     def attach_file(self, path_str: str) -> None:
-        path = Path(path_str).resolve()
+        path = Path(path_str).expanduser()
         if not path.exists():
             print(f"{SYSTEM_MSG}--> Error: Path not found: {path_str}{RESET_COLOR}")
             return
@@ -325,7 +323,7 @@ class ContextManager:
             return []
 
         try:
-            input_path = Path(path_str).expanduser().resolve()
+            input_path = Path(path_str).expanduser()
         except (OSError, RuntimeError):
             # Fallback for simple filenames that aren't valid paths on their own.
             # We will match by name only in this case.

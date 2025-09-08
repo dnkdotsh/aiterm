@@ -20,6 +20,7 @@ structure is in place before execution.
 """
 
 import getpass
+import platform
 import shutil
 import sys
 from importlib import resources
@@ -58,8 +59,9 @@ def _create_dotenv_file(openai_key: str, gemini_key: str) -> None:
     )
     try:
         config.DOTENV_FILE.write_text(env_content, encoding="utf-8")
-        # Set secure file permissions (read/write for owner only).
-        config.DOTENV_FILE.chmod(0o600)
+        # Set secure file permissions (read/write for owner only) on non-Windows systems.
+        if platform.system() != "Windows":
+            config.DOTENV_FILE.chmod(0o600)
         log.info("Successfully created .env file at %s", config.DOTENV_FILE)
         print(f"--> API keys saved to: {config.DOTENV_FILE}")
     except OSError as e:

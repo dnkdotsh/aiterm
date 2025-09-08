@@ -132,7 +132,7 @@ def _perform_image_generation(
         filepath = save_image_and_get_path(prompt, image_bytes, session_name)
         print(f"Image saved successfully as: {filepath}")
         log_image_generation(model, prompt, str(filepath), session_name)
-        return True, str(filepath)
+        return True, filepath.as_posix()
     except (base64.binascii.Error, OSError) as e:
         print(f"Error saving image: {e}", file=sys.stderr)
         return False, None
