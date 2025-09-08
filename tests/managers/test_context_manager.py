@@ -3,6 +3,7 @@
 Tests for the ContextManager class in aiterm/managers/context_manager.py.
 """
 
+import os
 import tarfile
 import zipfile
 from io import BytesIO
@@ -227,10 +228,10 @@ class TestContextManager:
         cm.list_files()
         captured = capsys.readouterr().out
         # Check for tree structure and file names
-        assert "/project/" in captured
-        assert "├── main.py" in captured
-        assert "└── utils" in captured
-        assert "    └── helpers.py" in captured
+        assert f"{os.path.sep}project{os.path.sep}" in captured
+        assert "+-- main.py" in captured
+        assert "+-- utils" in captured
+        assert "   +-- helpers.py" in captured
         # Check for byte formatting
         assert "(14.00 B)" in captured  # main.py
         assert "(18.00 B)" in captured  # helpers.py

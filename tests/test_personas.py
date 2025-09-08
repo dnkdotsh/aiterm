@@ -6,8 +6,10 @@ Tests for the persona management module in aiterm/personas.py.
 import json
 import os
 import shutil
+import sys
 from pathlib import Path
 
+import pytest
 from aiterm import config, personas
 
 
@@ -33,6 +35,9 @@ class TestPersonas:
             data = json.load(f)
         assert data["name"] == "AITERM Assistant"
 
+    @pytest.mark.skipif(
+        sys.platform == "win32", reason="Permission tests are POSIX-specific"
+    )
     def test_create_default_persona_os_error(self, fake_fs, caplog):
         """Tests that an OSError during creation is handled gracefully."""
         # Make the directory read-only to cause an OSError
@@ -51,14 +56,15 @@ class TestPersonas:
         # Create a file relative to the persona dir
         relative_file = config.PERSONAS_DIRECTORY / "relative.txt"
         fake_fs.create_file(relative_file)
-        # Create an absolute file
-        abs_file = Path("/etc/abs.txt")
+        # Create an absolute file using an OS-agnostic method
+        abs_path_str = os.path.abspath("/etc/abs.txt")
+        abs_file = Path(abs_path_str)
         fake_fs.create_file(abs_file)
         # Create a file in the user's home dir
         home_file = Path("/home/user/docs/home.txt")
         fake_fs.create_file(home_file)
 
-        raw_paths = ["relative.txt", "/etc/abs.txt", "~/docs/home.txt"]
+        raw_paths = ["relative.txt", abs_path_str, "~/docs/home.txt"]
         resolved_paths = personas._resolve_attachment_paths(persona_path, raw_paths)
 
         assert resolved_paths[0].resolve() == relative_file.resolve()

@@ -1,6 +1,7 @@
 # tests/test_bootstrap.py
 import os
 import shutil
+import sys
 from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -86,7 +87,8 @@ class TestBootstrap:
         env_content = config.DOTENV_FILE.read_text()
         assert 'OPENAI_API_KEY="test_openai_key"' in env_content
         assert 'GEMINI_API_KEY="test_gemini_key"' in env_content
-        assert os.stat(config.DOTENV_FILE).st_mode & 0o777 == 0o600
+        if sys.platform != "win32":
+            assert os.stat(config.DOTENV_FILE).st_mode & 0o777 == 0o600
 
         # Assert default content was "copied"
         bootstrap.persona_manager.create_default_persona_if_missing.assert_called()
@@ -113,6 +115,9 @@ class TestBootstrap:
             bootstrap._perform_first_run_setup()
         assert excinfo.value.code == 0
 
+    @pytest.mark.skipif(
+        sys.platform == "win32", reason="Permission tests are POSIX-specific"
+    )
     def test_perform_first_run_setup_os_error(
         self, fake_fs, mock_bootstrap_deps, mocker
     ):

@@ -277,12 +277,12 @@ class ContextManager:
             items = sorted(subtree.items())
             for i, (name, content) in enumerate(items):
                 is_last = i == (len(items) - 1)
-                connector = "└── " if is_last else "├── "
+                connector = "+-- " if is_last else "+-- "
                 print(f"{prefix}{connector}{name}", end="")
 
                 if isinstance(content, dict):
                     print()  # It's a directory, print a newline and recurse
-                    new_prefix = prefix + ("    " if is_last else "│   ")
+                    new_prefix = prefix + ("    " if is_last else "|   ")
                     _print_tree(content, new_prefix)
                 else:
                     # It's a file, print the size on the same line

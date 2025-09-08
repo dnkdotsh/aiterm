@@ -5,8 +5,10 @@ Tests for the user interface components in aiterm/chat_ui.py.
 
 import json
 import os
+import sys
 from pathlib import Path
 
+import pytest
 from aiterm import commands, config
 from aiterm.personas import Persona
 from prompt_toolkit.history import InMemoryHistory
@@ -153,6 +155,9 @@ class TestSingleChatUI:
         assert data["prompt"]["content"] == "Hello"
         assert data["response"]["content"] == "Hi"
 
+    @pytest.mark.skipif(
+        sys.platform == "win32", reason="Permission tests are POSIX-specific"
+    )
     def test_log_turn_os_error(self, fake_fs, mock_chat_ui, caplog):
         """Tests graceful handling of an OSError during logging."""
         log_path = config.CHATLOG_DIRECTORY / "test_log.jsonl"
