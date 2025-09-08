@@ -4,7 +4,6 @@ This module contains shared fixtures for the pytest suite.
 Fixtures defined here are automatically available to all test functions.
 """
 
-import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -17,13 +16,6 @@ from aiterm.managers.multichat_manager import MultiChatSession
 from aiterm.managers.session_manager import SessionManager
 from aiterm.session_state import MultiChatSessionState, SessionState
 from pyfakefs.fake_filesystem_unittest import Patcher
-
-
-# Configure caplog to capture the 'aiterm' logger
-# This hook ensures the logger is configured before tests run
-def pytest_configure(config):
-    logging.getLogger("aiterm").propagate = True
-
 
 # Mock settings that will be used as the baseline for multiple test files
 MOCK_SETTINGS = {

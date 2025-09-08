@@ -4,7 +4,10 @@ import argparse
 import pytest
 from aiterm import config
 from aiterm.personas import Persona
-from aiterm.utils.config_loader import resolve_config_precedence
+from aiterm.utils.config_loader import (
+    get_default_model_for_engine,
+    resolve_config_precedence,
+)
 
 
 @pytest.fixture
@@ -35,6 +38,11 @@ def mock_persona_loader(mocker):
 # Use the centralized settings patcher from conftest.py
 @pytest.mark.usefixtures("mock_settings_patcher")
 class TestConfigLoader:
+    def test_get_default_model_for_engine_openai(self):
+        """Tests retrieving the default model specifically for the OpenAI engine."""
+        model = get_default_model_for_engine("openai")
+        assert model == "openai-default"
+
     def test_defaults_only(self, mock_args, mock_persona_loader):
         """Test that default settings are used when no CLI args or persona are provided."""
         # Simulate interactive mode, which should try to load default persona
@@ -150,6 +158,16 @@ class TestConfigLoader:
         assert result["engine_name"] == "gemini"
         # The model should fall back to the default for the CLI-specified engine
         assert result["model"] == "gemini-default"
+
+    def test_resolve_config_precedence_persona_not_found(
+        self, mock_args, mock_persona_loader, capsys
+    ):
+        """Tests that a warning is printed when a specified persona is not found."""
+        mock_args.persona = "nonexistent"
+        mock_persona_loader.return_value = None
+        resolve_config_precedence(mock_args)
+        captured = capsys.readouterr()
+        assert "Warning: Persona 'nonexistent' not found." in captured.err
 
     def test_persona_object_passed_through_with_attachments(
         self, fake_fs, mock_args, mock_persona_loader

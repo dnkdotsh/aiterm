@@ -109,38 +109,41 @@ class TestEngines:
                 assert mock_gemini_engine.parse_chat_response(response_data) == ""
                 assert expected_log_msg in caplog.text
 
-    def test_openai_fetch_available_models_request_error(
+    def test_openai_fetch_available_models_http_error(
         self, mock_openai_engine, mocker, caplog
     ):
-        """Tests error handling when fetching OpenAI models."""
-        mocker.patch(
-            "requests.get",
-            side_effect=requests.exceptions.RequestException("Network Error"),
+        """Tests HTTP error handling when fetching OpenAI models."""
+        mock_response = MagicMock()
+        mock_response.raise_for_status.side_effect = (
+            requests.exceptions.RequestException("HTTP Error")
         )
+        mocker.patch("requests.get", return_value=mock_response)
+
         with caplog.at_level(logging.WARNING):
             models = mock_openai_engine.fetch_available_models("chat")
             assert models == []
             assert (
                 "aiterm",
                 logging.WARNING,
-                "Could not fetch OpenAI model list (Network Error).",
+                "Could not fetch OpenAI model list (HTTP Error).",
             ) in caplog.record_tuples
 
-    def test_gemini_fetch_available_models_request_error(
+    def test_gemini_fetch_available_models_http_error(
         self, mock_gemini_engine, mocker, caplog
     ):
-        """Tests error handling when fetching Gemini models."""
-        mocker.patch(
-            "requests.get",
-            side_effect=requests.exceptions.RequestException("Network Error"),
+        """Tests HTTP error handling when fetching Gemini models."""
+        mock_response = MagicMock()
+        mock_response.raise_for_status.side_effect = (
+            requests.exceptions.RequestException("HTTP Error")
         )
+        mocker.patch("requests.get", return_value=mock_response)
         with caplog.at_level(logging.WARNING):
             models = mock_gemini_engine.fetch_available_models("chat")
             assert models == []
             assert (
                 "aiterm",
                 logging.WARNING,
-                "Could not fetch Gemini model list (Network Error).",
+                "Could not fetch Gemini model list (HTTP Error).",
             ) in caplog.record_tuples
 
     def test_openai_fetch_available_models_success(self, mock_openai_engine, mocker):

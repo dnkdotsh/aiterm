@@ -62,6 +62,25 @@ class TestFileProcessor:
             "%Y%m%d_%H%M%S"
         )
 
+    def test_save_image_and_get_path_with_session(self, fake_fs, mocker):
+        """Tests the image filename format when a session_name is provided."""
+        mock_datetime = mocker.patch("aiterm.utils.file_processor.datetime")
+        mock_datetime.datetime.now.return_value.strftime.return_value = (
+            "20250101_123000"
+        )
+
+        prompt = "a red boat"
+        image_bytes = b"fakedata2"
+        session_name = "my_watercraft_session"
+        path = file_processor.save_image_and_get_path(prompt, image_bytes, session_name)
+
+        assert path.parent == config.IMAGE_DIRECTORY
+        expected_name = (
+            "session_my_watercraft_session_img_a_red_boat_20250101_123000.png"
+        )
+        assert path.name == expected_name
+        assert path.read_bytes() == image_bytes
+
     def test_log_image_generation_os_error(self, mocker, caplog):
         """Tests that an OSError when writing to the image log is handled."""
         # Mock `open` to raise an error when called

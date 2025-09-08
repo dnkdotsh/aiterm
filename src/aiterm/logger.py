@@ -26,7 +26,7 @@ def setup_logger():
     """Configures and returns a project-wide logger."""
     logger = logging.getLogger("aiterm")
     logger.setLevel(logging.INFO)
-    logger.propagate = False
+    logger.propagate = True
 
     formatter = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
