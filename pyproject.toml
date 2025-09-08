@@ -34,7 +34,7 @@ aiterm = "aiterm.aiterm:main"
 test = [
     "pytest",
     "pytest-cov",
-    "pytest-mocker",
+    "pytest-mock",
     "pyfakefs",
 ]
 dev = [
