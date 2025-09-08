@@ -48,9 +48,14 @@ class TestPersonas:
     def test_resolve_attachment_paths(self, fake_fs, monkeypatch):
         """Tests various path resolution strategies for persona attachments."""
         persona_path = config.PERSONAS_DIRECTORY / "test.json"
-        # Monkeypatch os.path.expanduser, which is what pathlib's expanduser calls.
+
+        # Create a platform-specific home directory path for the mock
+        home_dir_str = "C:\\home\\user" if sys.platform == "win32" else "/home/user"
+        home_dir_path = Path(home_dir_str)
+
+        # Monkeypatch os.path.expanduser to be platform-aware
         monkeypatch.setattr(
-            os.path, "expanduser", lambda p: p.replace("~", "/home/user")
+            os.path, "expanduser", lambda p: p.replace("~", home_dir_str)
         )
 
         # Create a file relative to the persona dir
@@ -61,7 +66,7 @@ class TestPersonas:
         abs_file = Path(abs_path_str)
         fake_fs.create_file(abs_file)
         # Create a file in the user's home dir
-        home_file = Path(os.path.abspath("/home/user/docs/home.txt"))
+        home_file = home_dir_path / "docs/home.txt"
         fake_fs.create_file(home_file)
 
         raw_paths = ["relative.txt", abs_path_str, "~/docs/home.txt"]
