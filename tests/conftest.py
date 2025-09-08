@@ -5,11 +5,13 @@ Fixtures defined here are automatically available to all test functions.
 """
 
 import logging
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
 from aiterm import config  # Import config to access LOG_DIRECTORY
+from aiterm import settings as app_settings
+from aiterm.chat_ui import MultiChatUI, SingleChatUI
 from aiterm.engine import GeminiEngine, OpenAIEngine
 from aiterm.managers.multichat_manager import MultiChatSession
 from aiterm.managers.session_manager import SessionManager
@@ -21,6 +23,28 @@ from pyfakefs.fake_filesystem_unittest import Patcher
 # This hook ensures the logger is configured before tests run
 def pytest_configure(config):
     logging.getLogger("aiterm").propagate = True
+
+
+# Mock settings that will be used as the baseline for multiple test files
+MOCK_SETTINGS = {
+    "default_engine": "gemini",
+    "default_gemini_model": "gemini-default",
+    "default_openai_chat_model": "openai-default",
+    "default_openai_image_model": "dall-e-default",
+    "default_max_tokens": 1000,
+    "stream": True,
+    "memory_enabled": True,
+}
+
+
+@pytest.fixture
+def mock_settings_patcher():
+    """
+    Fixture to patch the global settings dictionary for the duration of a test.
+    It replaces the content of the settings dict with MOCK_SETTINGS.
+    """
+    with patch.dict(app_settings.settings, MOCK_SETTINGS, clear=True):
+        yield
 
 
 @pytest.fixture
@@ -131,6 +155,7 @@ def fake_fs():
         config.CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         config.DATA_DIR.mkdir(parents=True, exist_ok=True)
         config.LOG_DIRECTORY.mkdir(parents=True, exist_ok=True)
+        config.CHATLOG_DIRECTORY.mkdir(parents=True, exist_ok=True)
         config.IMAGE_DIRECTORY.mkdir(parents=True, exist_ok=True)
         config.SESSIONS_DIRECTORY.mkdir(parents=True, exist_ok=True)
         config.PERSONAS_DIRECTORY.mkdir(parents=True, exist_ok=True)
@@ -212,14 +237,29 @@ def mock_prompt_toolkit(mocker):
             raise EOFError
         return input_queue.pop(0)
 
-    # Patch prompt where it is USED. The tests that need this are in
-    # `test_commands.py`, and the `prompt` function is imported and called
-    # directly within the `aiterm.commands` module.
+    # Patch prompt where it is USED.
+    # It's used in commands.py and ui_helpers.py
     mocker.patch("aiterm.commands.prompt", side_effect=_mocked_prompt_side_effect)
+    mocker.patch(
+        "aiterm.utils.ui_helpers.prompt", side_effect=_mocked_prompt_side_effect
+    )
 
     return {
         "input_queue": input_queue  # Tests will populate this list
     }
+
+
+@pytest.fixture
+def mock_prompt_toolkit_app(mocker):
+    """Mocks prompt_toolkit's get_app() and its invalidate() method."""
+    mock_app = MagicMock()
+    mock_buffer = MagicMock()
+    mock_buffer.text = ""  # Default empty text buffer
+    mock_app.current_buffer = mock_buffer
+    mock_get_app = mocker.patch("aiterm.chat_ui.get_app", return_value=mock_app)
+    # Also patch for commands module if needed there
+    mocker.patch("aiterm.commands.get_app", return_value=mock_app)
+    return {"get_app": mock_get_app, "app": mock_app}
 
 
 @pytest.fixture
@@ -252,3 +292,21 @@ def mock_streaming_response_factory():
         return response
 
     return _create_mock_response
+
+
+@pytest.fixture
+def mock_chat_ui(mock_session_manager):
+    """Provides a SingleChatUI instance with a mocked session manager."""
+    return SingleChatUI(
+        session_manager=mock_session_manager, session_name="test_ui_session"
+    )
+
+
+@pytest.fixture
+def mock_multichat_ui(mock_multichat_session):
+    """Provides a MultiChatUI instance with a mocked session."""
+    return MultiChatUI(
+        session=mock_multichat_session,
+        session_name="test_multi_ui",
+        initial_prompt=None,
+    )

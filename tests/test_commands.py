@@ -386,6 +386,111 @@ class TestCommands:
         assert "detached" in last_message_text
         assert "'file.txt'" in last_message_text
 
+    def test_handle_set_usage_error(self, mock_session_manager, capsys):
+        """Tests /set with the wrong number of arguments."""
+        commands.handle_set(["one_arg"], mock_session_manager)
+        captured = capsys.readouterr()
+        assert "Usage: /set <key> <value>" in captured.out
+
+    def test_handle_set_save_failure(self, mocker, mock_session_manager, capsys):
+        """Tests /set when save_setting returns a failure."""
+        mocker.patch(
+            "aiterm.commands.save_setting",
+            return_value=(False, "A mocked error occurred."),
+        )
+        commands.handle_set(["key", "value"], mock_session_manager)
+        captured = capsys.readouterr()
+        assert "A mocked error occurred." in captured.out
+
+    def test_handle_toolbar_no_args(self, mock_session_manager, capsys, mocker):
+        """Tests /toolbar with no args prints current settings."""
+        mocker.patch(
+            "aiterm.commands.settings",
+            {
+                "toolbar_enabled": True,
+                "toolbar_priority_order": "a,b,c",
+                "toolbar_separator": " - ",
+                "toolbar_show_total_io": False,
+                "toolbar_show_live_tokens": True,
+                "toolbar_show_model": True,
+                "toolbar_show_persona": False,
+            },
+        )
+        commands.handle_toolbar([], mock_session_manager)
+        captured = capsys.readouterr()
+        assert "Toolbar Enabled: True" in captured.out
+        assert "Component Order: a,b,c" in captured.out
+        assert "Show Session I/O: False" in captured.out
+        assert "Show Persona: False" in captured.out
+
+    def test_handle_toolbar_on_off(
+        self, mock_session_manager, mocker, mock_prompt_toolkit_app
+    ):
+        """Tests `/toolbar on` and `/toolbar off`."""
+        mock_save = mocker.patch(
+            "aiterm.commands.save_setting", return_value=(True, "OK")
+        )
+        commands.handle_toolbar(["on"], mock_session_manager)
+        mock_save.assert_called_with("toolbar_enabled", "on")
+        assert mock_prompt_toolkit_app["app"].invalidate.called
+
+        commands.handle_toolbar(["off"], mock_session_manager)
+        mock_save.assert_called_with("toolbar_enabled", "off")
+
+    def test_handle_toolbar_toggle(
+        self, mock_session_manager, mocker, mock_prompt_toolkit_app
+    ):
+        """Tests `/toolbar toggle <component>`."""
+        mocker.patch("aiterm.commands.settings", {"toolbar_show_model": True})
+        mock_save = mocker.patch(
+            "aiterm.commands.save_setting", return_value=(True, "OK")
+        )
+        commands.handle_toolbar(["toggle", "model"], mock_session_manager)
+        # Should toggle from True to False
+        mock_save.assert_called_with("toolbar_show_model", "False")
+        assert mock_prompt_toolkit_app["app"].invalidate.called
+
+    def test_handle_theme_no_args(self, mock_session_manager, capsys, mocker):
+        """Tests /theme with no args lists available themes."""
+        mocker.patch(
+            "aiterm.commands.settings",
+            {"active_theme": "default"},
+        )
+        mocker.patch(
+            "aiterm.commands.theme_manager.list_themes",
+            return_value={"default": "The default theme.", "solarized": "A light one."},
+        )
+        commands.handle_theme([], mock_session_manager)
+        captured = capsys.readouterr()
+        assert "--- Available Themes ---" in captured.out
+        assert "> default: The default theme." in captured.out
+        assert "  solarized: A light one." in captured.out
+
+    def test_handle_theme_apply_success(
+        self, mock_session_manager, mocker, mock_prompt_toolkit_app
+    ):
+        """Tests successfully applying a new theme."""
+        mocker.patch(
+            "aiterm.commands.theme_manager.list_themes", return_value={"solarized": "d"}
+        )
+        mock_save = mocker.patch(
+            "aiterm.commands.save_setting", return_value=(True, "Theme set!")
+        )
+        mock_reload = mocker.patch("aiterm.commands.theme_manager.reload_theme")
+
+        commands.handle_theme(["solarized"], mock_session_manager)
+        mock_save.assert_called_with("active_theme", "solarized")
+        mock_reload.assert_called_once()
+        assert mock_prompt_toolkit_app["app"].invalidate.called
+        assert mock_session_manager.state.ui_refresh_needed is True
+
+    def test_handle_theme_not_found(self, mock_session_manager, mocker, capsys):
+        """Tests applying a theme that does not exist."""
+        mocker.patch("aiterm.commands.theme_manager.list_themes", return_value={})
+        commands.handle_theme(["nonexistent"], mock_session_manager)
+        captured = capsys.readouterr()
+        assert "Theme 'nonexistent' not found" in captured.out
+
 
 class TestMultiChatCommands:
     """Test suite for multi-chat specific slash command handlers."""

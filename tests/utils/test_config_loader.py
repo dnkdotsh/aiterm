@@ -1,21 +1,10 @@
 # tests/utils/test_config_loader.py
 import argparse
-from unittest.mock import patch
 
 import pytest
 from aiterm import config
 from aiterm.personas import Persona
 from aiterm.utils.config_loader import resolve_config_precedence
-
-# Mock settings that will be used as the baseline
-MOCK_SETTINGS = {
-    "default_engine": "gemini",
-    "default_gemini_model": "gemini-default",
-    "default_openai_chat_model": "openai-default",
-    "default_max_tokens": 1000,
-    "stream": True,
-    "memory_enabled": True,
-}
 
 
 @pytest.fixture
@@ -38,19 +27,12 @@ def mock_args():
 
 
 @pytest.fixture
-def mock_settings_patcher():
-    """Fixture to patch the settings dictionary used by the config_loader."""
-    with patch("aiterm.utils.config_loader.settings", MOCK_SETTINGS):
-        yield
-
-
-@pytest.fixture
 def mock_persona_loader(mocker):
     """Fixture to mock the persona loading functions."""
     return mocker.patch("aiterm.utils.config_loader.personas.load_persona")
 
 
-# Use the patcher automatically for all tests in this class
+# Use the centralized settings patcher from conftest.py
 @pytest.mark.usefixtures("mock_settings_patcher")
 class TestConfigLoader:
     def test_defaults_only(self, mock_args, mock_persona_loader):
