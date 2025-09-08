@@ -92,6 +92,43 @@ class TestBootstrap:
         bootstrap.persona_manager.create_default_persona_if_missing.assert_called()
         assert shutil.copy2.call_count >= 2
 
+    def test_perform_first_run_setup_user_declines(
+        self, fake_fs, mock_bootstrap_deps, mocker
+    ):
+        """Tests that the setup is aborted if the user enters 'n'."""
+        mocker.patch("builtins.input", return_value="n")
+        shutil.rmtree(config.CONFIG_DIR)
+        with pytest.raises(SystemExit) as excinfo:
+            bootstrap._perform_first_run_setup()
+        assert excinfo.value.code == 0
+        assert not config.CONFIG_DIR.exists()
+
+    def test_perform_first_run_setup_keyboard_interrupt(
+        self, fake_fs, mock_bootstrap_deps, mocker
+    ):
+        """Tests that the setup is aborted on KeyboardInterrupt."""
+        mocker.patch("builtins.input", side_effect=KeyboardInterrupt)
+        shutil.rmtree(config.CONFIG_DIR)
+        with pytest.raises(SystemExit) as excinfo:
+            bootstrap._perform_first_run_setup()
+        assert excinfo.value.code == 0
+
+    def test_perform_first_run_setup_os_error(
+        self, fake_fs, mock_bootstrap_deps, mocker
+    ):
+        """Tests that setup exits gracefully if a directory can't be created."""
+        # Arrange: Make the parent directory read-only to cause an OSError on mkdir.
+        shutil.rmtree(config.CONFIG_DIR)
+        config.CONFIG_DIR.parent.chmod(0o555)  # Read and execute only
+
+        # Act & Assert
+        with pytest.raises(SystemExit) as excinfo:
+            bootstrap._perform_first_run_setup()
+
+        assert excinfo.value.code == 1
+        # Cleanup: Restore permissions so other tests aren't affected
+        config.CONFIG_DIR.parent.chmod(0o777)
+
     def test_ensure_project_structure_not_first_run(self, fake_fs, mock_bootstrap_deps):
         """
         Tests that `ensure_project_structure` creates missing subdirectories
@@ -148,3 +185,19 @@ class TestBootstrap:
         assert (config.CHATLOG_DIRECTORY / "multichat_log.jsonl").exists()
         assert not (config.LOG_DIRECTORY / "chat_log_1.jsonl").exists()
         assert (config.LOG_DIRECTORY / "aiterm.log").exists()
+
+    def test_migrate_chat_logs_already_done(self, fake_fs, mocker):
+        """
+        Tests that the migration function does nothing if the target directory
+        already exists.
+        """
+        # Arrange: Both directories exist, which is the post-migration state.
+        assert config.LOG_DIRECTORY.exists()
+        assert config.CHATLOG_DIRECTORY.exists()
+        mock_move = mocker.patch("shutil.move")
+
+        # Act
+        bootstrap._migrate_chat_logs()
+
+        # Assert
+        mock_move.assert_not_called()

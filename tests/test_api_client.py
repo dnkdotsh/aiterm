@@ -1,11 +1,12 @@
 # tests/test_api_client.py
 
 import json
+import logging
 from unittest.mock import MagicMock
 
 import pytest
 import requests
-from aiterm import api_client
+from aiterm import api_client, config
 from aiterm.api_client import (
     ApiRequestError,
     MissingApiKeyError,
@@ -139,15 +140,17 @@ def test_make_api_request_success_with_bad_json(mocker, mock_settings):
         make_api_request("http://test.com", {}, {})
 
 
-def test_make_api_request_logs_on_failure(mocker, mock_settings, fs):
+def test_make_api_request_logs_on_failure(mocker, mock_settings, fake_fs):
     """Test that the request is logged even when an exception occurs."""
     mocker.patch(
         "requests.post",
         side_effect=requests.exceptions.RequestException("Connection failed"),
     )
     # Mock the log file path
-    log_file_path = "/fake/home/.local/share/aiterm/logs/raw.log"
-    fs.create_file(log_file_path, contents="")
+    log_file_path = config.RAW_LOG_FILE
+    # Use fake_fs fixture from conftest
+    log_file_path.parent.mkdir(exist_ok=True, parents=True)
+    log_file_path.touch()
 
     mocker.patch("aiterm.api_client.config.RAW_LOG_FILE", log_file_path)
     # We also need to mock the logger setup to use the fake path
@@ -167,6 +170,22 @@ def test_make_api_request_logs_on_failure(mocker, mock_settings, fs):
     assert len(session_logs) == 1
     assert session_logs[0]["request"]["payload"] == {"payload": "data"}
     assert "Connection failed" in session_logs[0]["response"]["error"]
+
+
+def test_setup_raw_logger_os_error(mocker, caplog):
+    """Tests that the raw logger setup handles an OSError during file handler creation."""
+    mocker.patch(
+        "aiterm.api_client.RotatingFileHandler",
+        side_effect=OSError("Permission denied"),
+    )
+    # Get the singleton logger instance and reset it to force re-initialization
+    raw_logger = logging.getLogger("aiterm_raw")
+    raw_logger.handlers.clear()
+
+    with caplog.at_level(logging.WARNING):
+        # Re-run the setup function
+        api_client._setup_raw_logger()
+        assert "Could not create raw log file handler: Permission denied" in caplog.text
 
 
 def test_parse_token_counts_openai(mock_openai_chat_response):
@@ -218,6 +237,39 @@ def test_process_stream_gemini(mock_streaming_response_factory):
     )
     assert full_text == "This is a test."
     assert tokens == {"prompt": 8, "completion": 12, "reasoning": 2, "total": 22}
+
+
+def test_process_stream_malformed_json(mock_streaming_response_factory, capsys):
+    """Tests that a malformed JSON chunk in a stream is skipped gracefully."""
+    openai_stream_chunks = [
+        'data: {"choices": [{"delta": {"content": "Hello"}}]}',
+        'data: {"choices": [{"delta": {"content": " world"}}',  # Malformed JSON
+        "data: [DONE]",
+    ]
+    mock_response = mock_streaming_response_factory(openai_stream_chunks)
+    full_text, _ = api_client._process_stream(
+        "openai", mock_response, print_stream=True
+    )
+    # Should have processed the valid chunk and skipped the invalid one.
+    assert full_text == "Hello"
+
+
+def test_process_stream_request_exception(mocker, caplog):
+    """Tests that a RequestException during stream iteration is handled."""
+
+    def iter_lines_with_error(*args, **kwargs):
+        yield b'data: {"candidates": [{"content": {"parts": [{"text": "Hello"}]}}]}'
+        raise requests.exceptions.RequestException("Network hiccup")
+
+    mock_response = MagicMock(spec=requests.Response)
+    mock_response.iter_lines.side_effect = iter_lines_with_error
+
+    with caplog.at_level(logging.WARNING):
+        full_text, _ = api_client._process_stream(
+            "gemini", mock_response, print_stream=False
+        )
+        assert full_text == "Hello"
+        assert "Stream processing error: Network hiccup" in caplog.text
 
 
 def test_process_stream_keyboard_interrupt(mock_streaming_response_factory):

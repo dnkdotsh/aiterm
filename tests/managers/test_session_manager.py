@@ -3,6 +3,8 @@
 Tests for the SessionManager class in aiterm/managers/session_manager.py.
 """
 
+import logging
+
 from aiterm import config
 from aiterm.utils.message_builder import (
     construct_user_message,
@@ -123,6 +125,25 @@ class TestSessionManager:
         # The end of the history should be the preserved recent turns
         assert mock_session_manager.state.history[1:] == original_last_turn
 
+    def test_perform_helper_request_failure(self, mocker, mock_session_manager, caplog):
+        """Tests the failure path of a helper request."""
+        # Arrange
+        mocker.patch(
+            "aiterm.api_client.perform_chat_request",
+            return_value=("API Error: Something went wrong", {}),
+        )
+
+        # Act
+        with caplog.at_level(logging.WARNING):
+            result, tokens = mock_session_manager._perform_helper_request(
+                "A test prompt", 100
+            )
+
+        # Assert
+        assert result is None
+        assert tokens == {}
+        assert "Helper request failed." in caplog.text
+
     def test_cleanup_full_run(self, mocker, fake_fs, mock_session_manager):
         """Tests the default cleanup path where everything is run."""
         mock_consolidate = mocker.patch("aiterm.workflows.consolidate_memory")
@@ -145,6 +166,20 @@ class TestSessionManager:
         log_path = config.CHATLOG_DIRECTORY / "chat_test.jsonl"
         fake_fs.create_file(log_path)
         mock_session_manager.state.force_quit = True
+
+        mock_session_manager.cleanup(session_name=None, log_filepath=log_path)
+
+        mock_consolidate.assert_not_called()
+        mock_rename_ai.assert_not_called()
+
+    def test_cleanup_exit_without_memory(self, mocker, fake_fs, mock_session_manager):
+        """Tests that the exit_without_memory flag skips cleanup."""
+        mock_consolidate = mocker.patch("aiterm.workflows.consolidate_memory")
+        mock_rename_ai = mocker.patch("aiterm.workflows.rename_log_with_ai")
+        log_path = config.CHATLOG_DIRECTORY / "chat_test.jsonl"
+        fake_fs.create_file(log_path)
+        mock_session_manager.state.history.append({"role": "user", "content": "test"})
+        mock_session_manager.state.exit_without_memory = True
 
         mock_session_manager.cleanup(session_name=None, log_filepath=log_path)
 
