@@ -193,6 +193,32 @@ class TestCommands:
         saved_file = config.SESSIONS_DIRECTORY / "test_ai_name.json"
         assert saved_file.exists()
 
+    def test_handle_save_auto_name_failure(
+        self, mocker, mock_session_manager, fake_fs, capsys
+    ):
+        """Tests that /save cancels if the AI fails to generate a name."""
+        mocker.patch.object(
+            mock_session_manager, "_perform_helper_request", return_value=(None, {})
+        )
+        mock_history = InMemoryHistory()
+        result = commands.handle_save([], mock_session_manager, mock_history)
+        assert result is False
+        captured = capsys.readouterr()
+        assert "Could not auto-generate a name. Save cancelled." in captured.out
+
+    def test_handle_save_write_error(
+        self, mocker, mock_session_manager, fake_fs, capsys
+    ):
+        """Tests that an OSError during file save is handled."""
+        mocker.patch("os.rename", side_effect=OSError("Permission denied"))
+        mock_history = InMemoryHistory()
+        result = commands.handle_save(
+            ["my-session"], mock_session_manager, mock_history
+        )
+        assert result is False
+        captured = capsys.readouterr()
+        assert "Error saving session: Permission denied" in captured.out
+
     def test_handle_save_with_flags(self, mock_session_manager, fake_fs):
         """Tests the --stay and --remember flags for /save."""
         mock_history = InMemoryHistory()
@@ -213,6 +239,15 @@ class TestCommands:
         assert result is False
         captured = capsys.readouterr()
         assert "Error loading session" in captured.out
+
+    def test_handle_load_missing_keys(self, mock_session_manager, fake_fs, capsys):
+        """Tests loading a session file that is missing required keys."""
+        incomplete_file = config.SESSIONS_DIRECTORY / "incomplete.json"
+        incomplete_file.write_text('{"history": []}')  # Missing engine_name and model
+        result = commands.handle_load(["incomplete.json"], mock_session_manager)
+        assert result is False
+        captured = capsys.readouterr()
+        assert "Invalid session file" in captured.out
 
     def test_handle_load_multichat_in_single_chat(
         self, mock_session_manager, fake_fs, capsys
@@ -392,15 +427,17 @@ class TestCommands:
         captured = capsys.readouterr()
         assert "Usage: /set <key> <value>" in captured.out
 
-    def test_handle_set_save_failure(self, mocker, mock_session_manager, capsys):
-        """Tests /set when save_setting returns a failure."""
-        mocker.patch(
-            "aiterm.commands.save_setting",
-            return_value=(False, "A mocked error occurred."),
-        )
-        commands.handle_set(["key", "value"], mock_session_manager)
+    def test_handle_set_unknown_key(self, mock_session_manager, capsys):
+        """Tests /set with an unknown setting key."""
+        commands.handle_set(["unknown_key", "some_value"], mock_session_manager)
         captured = capsys.readouterr()
-        assert "A mocked error occurred." in captured.out
+        assert "Unknown setting: 'unknown_key'" in captured.out
+
+    def test_handle_set_invalid_value(self, mock_session_manager, capsys):
+        """Tests /set with an invalid value for the setting's type."""
+        commands.handle_set(["stream", "not_a_bool"], mock_session_manager)
+        captured = capsys.readouterr()
+        assert "Error: Invalid boolean value" in captured.out
 
     def test_handle_toolbar_no_args(self, mock_session_manager, capsys, mocker):
         """Tests /toolbar with no args prints current settings."""
