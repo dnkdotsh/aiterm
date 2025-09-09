@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # aiterm/chat_ui.py
 # aiterm: A command-line interface for interacting with AI models.
 # Copyright (C) 2025 Dank A. Saurus
@@ -29,7 +30,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from prompt_toolkit import PromptSession, prompt
+from prompt_toolkit import PromptSession
 from prompt_toolkit.application import get_app
 from prompt_toolkit.formatted_text import ANSI
 from prompt_toolkit.history import InMemoryHistory
@@ -287,6 +288,86 @@ class MultiChatUI:
         self.session_name = session_name
         self.initial_prompt = initial_prompt
 
+    def _create_style_from_theme(self) -> Style:
+        """Creates a prompt_toolkit Style object from the current theme."""
+        try:
+            return Style.from_dict(
+                {
+                    "bottom-toolbar": theme_manager.ACTIVE_THEME.get(
+                        "style_bottom_toolbar_background", ""
+                    ),
+                    "bottom-toolbar.separator": theme_manager.ACTIVE_THEME.get(
+                        "style_bottom_toolbar_separator", ""
+                    ),
+                    "bottom-toolbar.tokens": theme_manager.ACTIVE_THEME.get(
+                        "style_bottom_toolbar_tokens", ""
+                    ),
+                    "bottom-toolbar.io": theme_manager.ACTIVE_THEME.get(
+                        "style_bottom_toolbar_io", ""
+                    ),
+                    "bottom-toolbar.model": theme_manager.ACTIVE_THEME.get(
+                        "style_bottom_toolbar_model", ""
+                    ),
+                }
+            )
+        except (ValueError, TypeError) as e:
+            print(
+                f"{SYSTEM_MSG}--> Warning: Invalid theme style format detected: {e}{RESET_COLOR}"
+            )
+            log.warning("Invalid theme style format: %s", e)
+            return Style.from_dict({})
+
+    def _get_bottom_toolbar_content(self) -> Any | None:
+        """Constructs the dynamic content for the prompt_toolkit bottom toolbar."""
+        component_map = {
+            "models": (
+                app_settings.settings["toolbar_show_model"],
+                "class:bottom-toolbar.model",
+                f"GPT: {self.session.models['openai']} | GEM: {self.session.models['gemini']}",
+            ),
+            "io": (
+                app_settings.settings["toolbar_show_total_io"],
+                "class:bottom-toolbar.io",
+                f"Session I/O: {self.session.state.total_prompt_tokens}p / {self.session.state.total_completion_tokens}c",
+            ),
+            "tokens": (
+                True,
+                "class:bottom-toolbar.tokens",
+                format_token_string(self.session.state.last_turn_tokens),
+            ),
+        }
+
+        # Simplified priority order for multichat
+        order = ["tokens", "models", "io"]
+        width = shutil.get_terminal_size().columns
+
+        styled_parts = []
+        current_length = 0
+        separator = app_settings.settings["toolbar_separator"]
+        sep_len = len(separator)
+        sep_style_str = "class:bottom-toolbar.separator"
+
+        for key in order:
+            if key not in component_map:
+                continue
+
+            is_enabled, style_class, text = component_map[key]
+            if not is_enabled or not text:
+                continue
+
+            part_len = len(text)
+            required_len = part_len + (sep_len if styled_parts else 0)
+
+            if current_length + required_len > width:
+                break
+
+            if styled_parts:
+                styled_parts.append((sep_style_str, separator))
+            styled_parts.append((style_class, text))
+            current_length += required_len
+
+        return styled_parts
+
     def run(self) -> None:
         log_filename_base = (
             self.session_name
@@ -298,7 +379,11 @@ class MultiChatUI:
         )
         print("Type /help for commands or '/exit to end.")
 
-        cli_history = InMemoryHistory(self.session.state.command_history)
+        style = self._create_style_from_theme()
+        prompt_session = PromptSession(
+            history=InMemoryHistory(self.session.state.command_history), style=style
+        )
+
         if self.initial_prompt:
             self.session.process_turn(
                 self.initial_prompt, log_filepath, is_first_turn=True
@@ -306,26 +391,43 @@ class MultiChatUI:
 
         try:
             while True:
+                toolbar_content = (
+                    self._get_bottom_toolbar_content
+                    if app_settings.settings["toolbar_enabled"]
+                    else None
+                )
                 prompt_message = f"\n{DIRECTOR_PROMPT}Director> {RESET_COLOR}"
-                user_input = prompt(ANSI(prompt_message), history=cli_history).strip()
+                user_input = prompt_session.prompt(
+                    ANSI(prompt_message),
+                    bottom_toolbar=toolbar_content,
+                    refresh_interval=0.5,
+                ).strip()
                 if not user_input:
                     sys.stdout.write("\x1b[1A\x1b[2K")
                     sys.stdout.flush()
                     continue
+
                 if user_input.lstrip().startswith("/"):
                     sys.stdout.write("\x1b[1A\x1b[2K")
                     sys.stdout.flush()
                     if self._handle_slash_command(
-                        user_input, cli_history, log_filepath
+                        user_input, prompt_session.history, log_filepath
                     ):
                         break
+
+                    if self.session.state.ui_refresh_needed:
+                        prompt_session.style = self._create_style_from_theme()
+                        try:
+                            get_app().invalidate()
+                        except Exception as e:
+                            log.warning("Could not invalidate prompt app: %s", e)
+                        self.session.state.ui_refresh_needed = False
                 else:
                     self.session.process_turn(user_input, log_filepath)
         except (KeyboardInterrupt, EOFError):
             print("\nSession interrupted.")
         finally:
             print("\nSession ended.")
-            # Add cleanup logic here
 
     def _handle_slash_command(
         self, user_input: str, cli_history: InMemoryHistory, log_filepath: Path

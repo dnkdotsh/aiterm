@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # tests/test_chat_ui.py
 """
 Tests for the user interface components in aiterm/chat_ui.py.
@@ -287,10 +288,12 @@ class TestMultiChatUI:
     def test_run_loop_flow(self, mocker, mock_multichat_ui):
         """Tests the basic flow of the multichat run loop."""
         mock_multichat_ui.session.primary_engine_name = "gemini"
-        mock_prompt = mocker.patch(
-            "aiterm.chat_ui.prompt",
-            side_effect=["hello", "/help", KeyboardInterrupt],
-        )
+        # Patch the PromptSession class, not the old prompt function
+        mock_ps_cls = mocker.patch("aiterm.chat_ui.PromptSession")
+        mock_ps_instance = mock_ps_cls.return_value
+        mock_ps_instance.prompt.side_effect = ["hello", "/help", KeyboardInterrupt]
+        mock_ps_instance.history = InMemoryHistory()
+
         mock_handler = MagicMock(return_value=False)
         mocker.patch.dict(commands.MULTICHAT_COMMAND_MAP, {"/help": mock_handler})
 
@@ -298,12 +301,16 @@ class TestMultiChatUI:
 
         mock_multichat_ui.session.process_turn.assert_called_once()
         mock_handler.assert_called_once()
-        assert mock_prompt.call_count == 3
+        assert mock_ps_instance.prompt.call_count == 3
 
     def test_run_loop_initial_prompt(self, mocker, mock_multichat_ui):
         """Tests that an initial prompt is processed before the loop starts."""
         mock_multichat_ui.session.primary_engine_name = "gemini"
-        mocker.patch("aiterm.chat_ui.prompt", side_effect=KeyboardInterrupt)
+        # Patch the PromptSession class
+        mock_ps_cls = mocker.patch("aiterm.chat_ui.PromptSession")
+        mock_ps_instance = mock_ps_cls.return_value
+        mock_ps_instance.prompt.side_effect = KeyboardInterrupt  # Loop will exit
+        mock_ps_instance.history = InMemoryHistory()
         mock_multichat_ui.initial_prompt = "Initial question"
 
         mock_multichat_ui.run()

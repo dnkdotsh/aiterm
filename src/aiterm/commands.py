@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # aiterm/commands.py
 # aiterm: A command-line interface for interacting with AI models.
 # Copyright (C) 2025 Dank A. Saurus
@@ -795,6 +796,9 @@ def handle_multichat_clear(
     )
     if confirm.lower() == "proceed":
         session.state.shared_history.clear()
+        session.state.total_prompt_tokens = 0
+        session.state.total_completion_tokens = 0
+        session.state.last_turn_tokens = {}
         print(f"{SYSTEM_MSG}--> Conversation history has been cleared.{RESET_COLOR}")
     else:
         print(f"{SYSTEM_MSG}--> Clear cancelled.{RESET_COLOR}")
@@ -817,9 +821,11 @@ def handle_multichat_model(
     target_engine = engine_map[engine_alias]
     if target_engine == "openai":
         session.state.openai_model = model_name
+        session.models["openai"] = model_name
         print(f"{SYSTEM_MSG}--> OpenAI model set to: {model_name}{RESET_COLOR}")
     else:  # gemini
         session.state.gemini_model = model_name
+        session.models["gemini"] = model_name
         print(f"{SYSTEM_MSG}--> Gemini model set to: {model_name}{RESET_COLOR}")
 
 
@@ -831,6 +837,9 @@ def handle_multichat_state(
     print(f"  Gemini Model: {session.state.gemini_model}")
     print(f"  Max Tokens: {session.state.max_tokens or 'Default'}")
     print(f"  Debug Logging: {'On' if session.state.debug_active else 'Off'}")
+    print(
+        f"  Total Session I/O: {session.state.total_prompt_tokens}p / {session.state.total_completion_tokens}c"
+    )
     print(f"  System Prompts: {'Active' if session.state.system_prompts else 'None'}")
     if session.state.initial_image_data:
         print(f"  Attached Images: {len(session.state.initial_image_data)}")
@@ -854,6 +863,66 @@ def handle_multichat_save(
             session.state.exit_without_memory = True
         return not should_stay
     return False
+
+
+def handle_multichat_set(
+    args: list[str], session: MultiChatSession, cli_history: InMemoryHistory
+) -> None:
+    if len(args) == 2:
+        key, value = args[0], args[1]
+        success, message = save_setting(key, value)
+        print(f"{SYSTEM_MSG}--> {message}{RESET_COLOR}")
+        if success:
+            session.state.ui_refresh_needed = True
+            # Force a full redraw for settings that might affect the UI layout
+            if key in ["active_theme", "toolbar_enabled"]:
+                theme_manager.reload_theme()
+                get_app().invalidate()
+    else:
+        print(f"{SYSTEM_MSG}--> Usage: /set <key> <value>.{RESET_COLOR}")
+
+
+def handle_multichat_toolbar(
+    args: list[str], session: MultiChatSession, cli_history: InMemoryHistory
+) -> None:
+    """Handles toolbar configuration commands for multi-chat."""
+    if not args or args[0].lower() not in ["on", "off"]:
+        print(f"{SYSTEM_MSG}--> Usage: /toolbar [on|off]{RESET_COLOR}")
+        return
+
+    command = args[0].lower()
+    success, message = save_setting("toolbar_enabled", command)
+    print(f"{SYSTEM_MSG}--> {message}{RESET_COLOR}")
+    if success:
+        session.state.ui_refresh_needed = True
+        get_app().invalidate()
+
+
+def handle_multichat_theme(
+    args: list[str], session: MultiChatSession, cli_history: InMemoryHistory
+) -> None:
+    """Handles listing and applying themes for multi-chat."""
+    if not args:
+        print(f"{SYSTEM_MSG}--- Available Themes ---{RESET_COLOR}")
+        current_theme_name = settings.get("active_theme", "default")
+        for name, desc in theme_manager.list_themes().items():
+            prefix = " >" if name == current_theme_name else "  "
+            print(f"{prefix} {name}: {desc}")
+        return
+
+    theme_name = args[0].lower()
+    if theme_name not in theme_manager.list_themes():
+        print(f"{SYSTEM_MSG}--> Theme '{theme_name}' not found.{RESET_COLOR}")
+        return
+
+    success, message = save_setting("active_theme", theme_name)
+    if success:
+        theme_manager.reload_theme()
+        session.state.ui_refresh_needed = True
+        get_app().invalidate()
+        print(f"{SYSTEM_MSG}--> {message}{RESET_COLOR}")
+    else:
+        print(f"{SYSTEM_MSG}--> Error setting theme: {message}{RESET_COLOR}")
 
 
 # --- Command Dispatcher Maps ---
@@ -900,4 +969,7 @@ MULTICHAT_COMMAND_MAP = {
     "/model": handle_multichat_model,
     "/state": handle_multichat_state,
     "/save": handle_multichat_save,
+    "/set": handle_multichat_set,
+    "/toolbar": handle_multichat_toolbar,
+    "/theme": handle_multichat_theme,
 }

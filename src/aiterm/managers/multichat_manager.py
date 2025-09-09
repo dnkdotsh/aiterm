@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # aiterm/managers/multichat_manager.py
 # aiterm: A command-line interface for interacting with AI models.
 # Copyright (C) 2025 Dank A. Saurus
@@ -19,10 +20,13 @@ This module contains the MultiChatSession, which manages the state and logic
 for an interactive multi-chat session.
 """
 
+from __future__ import annotations
+
 import json
 import queue
 import threading
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .. import api_client
 from .. import settings as app_settings
@@ -40,6 +44,9 @@ from ..utils.message_builder import (
     construct_user_message,
     translate_history,
 )
+
+if TYPE_CHECKING:
+    from ..engine import AIEngine
 
 
 class MultiChatSession:
@@ -66,10 +73,17 @@ class MultiChatSession:
             "gemini": "gemini",
         }
 
-    def _secondary_worker(self, engine, model, history, system_prompt, result_queue):
+    def _secondary_worker(
+        self,
+        engine: AIEngine,
+        model: str,
+        history: list,
+        system_prompt: str | None,
+        result_queue: queue.Queue,
+    ):
         srl_list = self.state.session_raw_logs if self.state.debug_active else None
         try:
-            text, _ = api_client.perform_chat_request(
+            text, tokens = api_client.perform_chat_request(
                 engine,
                 model,
                 history,
@@ -80,10 +94,14 @@ class MultiChatSession:
                 session_raw_logs=srl_list,
             )
             cleaned = clean_ai_response_text(engine.name, text)
-            result_queue.put({"engine_name": engine.name, "text": cleaned})
+            result_queue.put(
+                {"engine_name": engine.name, "text": cleaned, "tokens": tokens}
+            )
         except Exception as e:
             log.error("Secondary worker failed: %s", e)
-            result_queue.put({"engine_name": engine.name, "text": f"Error: {e}"})
+            result_queue.put(
+                {"engine_name": engine.name, "text": f"Error: {e}", "tokens": {}}
+            )
 
     def process_turn(
         self, prompt_text: str, log_filepath: Path, is_first_turn: bool = False
@@ -117,7 +135,7 @@ class MultiChatSession:
                 end="",
                 flush=True,
             )
-            raw_response, _ = api_client.perform_chat_request(
+            raw_response, tokens = api_client.perform_chat_request(
                 engine,
                 model,
                 current_history,
@@ -130,6 +148,10 @@ class MultiChatSession:
             cleaned = clean_ai_response_text(engine.name, raw_response)
             asst_msg = construct_assistant_message("openai", cleaned)
             asst_msg["source_engine"] = engine.name
+
+            self.state.last_turn_tokens = tokens
+            self.state.total_prompt_tokens += tokens.get("prompt", 0)
+            self.state.total_completion_tokens += tokens.get("completion", 0)
 
             user_msg_for_log = construct_user_message("openai", user_msg_text, [])
             self.state.shared_history.extend([user_msg_for_log, asst_msg])
@@ -170,7 +192,7 @@ class MultiChatSession:
                 end="",
                 flush=True,
             )
-            primary_raw, _ = api_client.perform_chat_request(
+            primary_raw, primary_tokens = api_client.perform_chat_request(
                 primary_engine,
                 self.models[primary_engine.name],
                 history_primary,
@@ -185,6 +207,14 @@ class MultiChatSession:
             print(
                 f"{ASSISTANT_PROMPT}[{secondary_result['engine_name'].capitalize()}]: {RESET_COLOR}{secondary_result['text']}"
             )
+            secondary_tokens = secondary_result.get("tokens", {})
+
+            # Aggregate token counts
+            self.state.last_turn_tokens = primary_tokens
+            self.state.total_prompt_tokens += primary_tokens.get("prompt", 0)
+            self.state.total_prompt_tokens += secondary_tokens.get("prompt", 0)
+            self.state.total_completion_tokens += primary_tokens.get("completion", 0)
+            self.state.total_completion_tokens += secondary_tokens.get("completion", 0)
 
             primary_cleaned = clean_ai_response_text(primary_engine.name, primary_raw)
             # Store messages with source engine metadata and without text prefixes.

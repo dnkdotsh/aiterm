@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # aiterm/session_state.py
 # aiterm: A command-line interface for interacting with AI models.
 # Copyright (C) 2025 Dank A. Saurus
@@ -79,3 +80,9 @@ class MultiChatSessionState:
     exit_without_memory: bool = False
     force_quit: bool = False
     custom_log_rename: str | None = None
+    # Token tracking for the session toolbar
+    total_prompt_tokens: int = 0
+    total_completion_tokens: int = 0
+    last_turn_tokens: dict[str, Any] = field(default_factory=dict)
+    # Flag to signal the UI loop to refresh styles
+    ui_refresh_needed: bool = False

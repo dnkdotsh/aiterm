@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # aiterm/utils/ui_helpers.py
 # aiterm: A command-line interface for interacting with AI models.
 # Copyright (C) 2025 Dank A. Saurus
@@ -98,8 +99,7 @@ Interactive Chat Commands:
   /save [name] [--stay] [--remember]
                     Save the session. Auto-generates a name if not provided.
                     --stay:      Do not exit after saving.
-                    --remember:  Update persistent memory before exiting.
-                    (Default is to save and exit without updating memory).
+                    --remember:  Update persistent memory before exiting. (Default is to save and exit without updating memory).
   /load <filename>  Load a session, replacing the current one.
   /engine [name]    Switch AI engine (openai/gemini). Translates history.
   /model [name]     Select a new model for the current engine.
@@ -119,16 +119,19 @@ Multi-Chat Commands:
   /quit                     Exit immediately without saving.
   /help                     Display this help message.
   /history                  Print the JSON of the shared conversation history.
-  /debug                    Toggle session-specific raw API logging.
-  /remember                 Consolidates current chat into memory.
   /clear                    Clear the current conversation history.
   /state                    Print the current session state.
+  /debug                    Toggle session-specific raw API logging.
+  /remember                 Consolidates current chat into memory.
   /save <name> [--stay] [--remember]
                             Save the session. A name is required.
                             --stay:      Do not exit after saving.
                             --remember:  Update persistent memory before saving.
   /model <gpt|gem> <name>   Change the model for the specified engine.
   /max-tokens <num>         Set max output tokens for the session.
+  /theme <name>             Switch the display theme. Run without a name to list themes.
+  /toolbar [on|off]         Control the bottom toolbar.
+  /set [key] [val]          Change a setting (e.g., /set toolbar_enabled false).
   /ai <gpt|gem> [prompt]    Send a targeted prompt to only one AI.
                             If no prompt, the AI is asked to continue.
 """

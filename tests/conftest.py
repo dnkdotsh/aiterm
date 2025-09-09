@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # tests/conftest.py
 """
 This module contains shared fixtures for the pytest suite.
@@ -125,10 +126,13 @@ def mock_openai_session_manager(mocker, mock_openai_session_state):
 @pytest.fixture
 def mock_multichat_session(mocker, mock_multichat_session_state):
     """Provides a mock MultiChatSession instance."""
-    # We can pass the real state object to a MagicMock to have it available
-    # as `mock_session.state` while still mocking all methods.
     mock_session = MagicMock(spec=MultiChatSession)
     mock_session.state = mock_multichat_session_state
+    # Add instance attributes that are set in the real __init__
+    mock_session.models = {
+        "openai": mock_multichat_session_state.openai_model,
+        "gemini": mock_multichat_session_state.gemini_model,
+    }
     return mock_session
 
 
