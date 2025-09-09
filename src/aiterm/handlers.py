@@ -1,3 +1,4 @@
+# src/aiterm/handlers.py
 #!/usr/bin/env python3
 # aiterm/handlers.py
 # aiterm: A command-line interface for interacting with AI models.
@@ -22,6 +23,7 @@ from pathlib import Path
 from . import api_client, config, workflows
 from . import personas as persona_manager
 from .chat_ui import MultiChatUI, SingleChatUI
+from .commands import handle_load
 from .engine import get_engine
 from .managers.context_manager import ContextManager
 from .managers.multichat_manager import MultiChatSession
@@ -130,8 +132,6 @@ def handle_chat(initial_prompt: str | None, args: argparse.Namespace) -> None:
 
 def handle_load_session(filepath_str: str) -> None:
     """Loads and starts an interactive session from a file."""
-    from .commands import handle_load
-
     raw_path = Path(filepath_str).expanduser()
     filepath = (
         raw_path if raw_path.is_absolute() else config.SESSIONS_DIRECTORY / raw_path

@@ -1,5 +1,4 @@
-# tests/managers/test_multichat_manager.py
-
+# src/aiterm/test_managers/test_multichat_manager.py
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -14,9 +13,13 @@ from src.aiterm.session_state import MultiChatSessionState
 @pytest.fixture
 def mock_multichat_session_state():
     """Provides a MultiChatSessionState instance for testing."""
+    mock_openai_engine = MagicMock(spec=AIEngine)
+    mock_openai_engine.name = "openai"
+    mock_gemini_engine = MagicMock(spec=AIEngine)
+    mock_gemini_engine.name = "gemini"
     return MultiChatSessionState(
-        openai_engine=MagicMock(spec=AIEngine, name="openai"),
-        gemini_engine=MagicMock(spec=AIEngine, name="gemini"),
+        openai_engine=mock_openai_engine,
+        gemini_engine=mock_gemini_engine,
         openai_model="gpt-test",
         gemini_model="gemini-test",
         max_tokens=100,
@@ -37,6 +40,7 @@ def mock_multichat_session(mock_multichat_session_state, mock_context_manager):
     )
 
 
+@pytest.mark.usefixtures("mock_settings_patcher")
 class TestMultiChatManager:
     @patch("src.aiterm.managers.multichat_manager.api_client.perform_chat_request")
     @patch("src.aiterm.managers.multichat_manager.threading.Thread")
@@ -45,12 +49,13 @@ class TestMultiChatManager:
         mock_thread_class,
         mock_perform_chat,
         mock_multichat_session,
-        monkeypatch,
+        mocker,
     ):
         """Tests the broadcast functionality where both AIs respond."""
         # Set primary engine
-        monkeypatch.setitem(
-            mock_multichat_session.context_manager.settings, "default_engine", "openai"
+        mocker.patch(
+            "src.aiterm.managers.multichat_manager.app_settings.settings",
+            {"default_engine": "openai"},
         )
         mock_multichat_session.primary_engine_name = "openai"
 
@@ -136,11 +141,12 @@ class TestMultiChatManager:
     @patch("src.aiterm.managers.multichat_manager.api_client.perform_chat_request")
     @patch("src.aiterm.managers.multichat_manager.threading.Thread")
     def test_secondary_worker_api_error(
-        self, mock_thread_class, mock_perform_chat, mock_multichat_session, monkeypatch
+        self, mock_thread_class, mock_perform_chat, mock_multichat_session, mocker
     ):
         """Tests that an API error in the secondary worker is handled."""
-        monkeypatch.setitem(
-            mock_multichat_session.context_manager.settings, "default_engine", "openai"
+        mocker.patch(
+            "src.aiterm.managers.multichat_manager.app_settings.settings",
+            {"default_engine": "openai"},
         )
         mock_multichat_session.primary_engine_name = "openai"
 
@@ -168,9 +174,9 @@ class TestMultiChatManager:
             mock_multichat_session.state.shared_history[2]
         )
 
-    @patch("builtins.open")
-    def test_log_multichat_turn(self, mock_open, mock_multichat_session):
+    def test_log_multichat_turn(self, mocker, mock_multichat_session):
         """Tests that a turn is correctly logged to a file."""
+        mock_open = mocker.patch("builtins.open", mocker.mock_open())
         mock_multichat_session._log_multichat_turn(
             Path("/fake.jsonl"), [{"role": "user"}]
         )
