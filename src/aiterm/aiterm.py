@@ -80,6 +80,13 @@ def run_chat_command(args: argparse.Namespace) -> None:
             file=sys.stderr,
         )
         sys.exit(1)
+    if args.both is not None and args.persona:
+        print(
+            "Error: Use --persona-gpt and --persona-gem in --both mode, not -P/--persona.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     if args.file:
         for path_str in args.file:
             if not Path(path_str).exists():
@@ -173,7 +180,19 @@ def main() -> None:
         "-P",
         "--persona",
         type=str,
-        help="Load a session configuration from a persona file.",
+        help="Load a persona file (single-chat only).",
+    )
+    context_group.add_argument(
+        "--persona-gpt",
+        type=str,
+        metavar="PERSONA",
+        help="Load a persona for the OpenAI engine (multi-chat only).",
+    )
+    context_group.add_argument(
+        "--persona-gem",
+        type=str,
+        metavar="PERSONA",
+        help="Load a persona for the Gemini engine (multi-chat only).",
     )
     context_group.add_argument(
         "--system-prompt",

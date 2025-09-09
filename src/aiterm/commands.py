@@ -694,6 +694,23 @@ def _save_multichat_session_to_file(session: MultiChatSession, filename: str) ->
     del state_dict["openai_engine"]
     del state_dict["gemini_engine"]
 
+    # Convert non-serializable types (Path, set, Persona) to JSON-friendly types
+    state_dict["attachments"] = {
+        str(k): asdict(v) for k, v in session.state.attachments.items()
+    }
+    state_dict["openai_persona_attachments"] = [
+        str(p) for p in session.state.openai_persona_attachments
+    ]
+    state_dict["gemini_persona_attachments"] = [
+        str(p) for p in session.state.gemini_persona_attachments
+    ]
+    state_dict["openai_persona"] = (
+        session.state.openai_persona.filename if session.state.openai_persona else None
+    )
+    state_dict["gemini_persona"] = (
+        session.state.gemini_persona.filename if session.state.gemini_persona else None
+    )
+
     temp_file_path = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -833,16 +850,28 @@ def handle_multichat_state(
     args: list[str], session: MultiChatSession, cli_history: InMemoryHistory
 ) -> None:
     print(f"{SYSTEM_MSG}--- Multi-Chat Session State ---{RESET_COLOR}")
-    print(f"  OpenAI Model: {session.state.openai_model}")
-    print(f"  Gemini Model: {session.state.gemini_model}")
+    gpt_p = (
+        session.state.openai_persona.name if session.state.openai_persona else "None"
+    )
+    gem_p = (
+        session.state.gemini_persona.name if session.state.gemini_persona else "None"
+    )
+    print(f"  OpenAI Persona: {gpt_p}, Model: {session.state.openai_model}")
+    print(f"  Gemini Persona: {gem_p}, Model: {session.state.gemini_model}")
     print(f"  Max Tokens: {session.state.max_tokens or 'Default'}")
     print(f"  Debug Logging: {'On' if session.state.debug_active else 'Off'}")
     print(
         f"  Total Session I/O: {session.state.total_prompt_tokens}p / {session.state.total_completion_tokens}c"
     )
-    print(f"  System Prompts: {'Active' if session.state.system_prompts else 'None'}")
-    if session.state.initial_image_data:
-        print(f"  Attached Images: {len(session.state.initial_image_data)}")
+    if session.state.attachments:
+        total_size = sum(
+            p.stat().st_size for p in session.state.attachments if p.exists()
+        )
+        print(
+            f"  Attached Text Files: {len(session.state.attachments)} ({format_bytes(total_size)})"
+        )
+    if session.state.attached_images:
+        print(f"  Attached Images: {len(session.state.attached_images)}")
 
 
 def handle_multichat_save(
@@ -925,6 +954,129 @@ def handle_multichat_theme(
         print(f"{SYSTEM_MSG}--> Error setting theme: {message}{RESET_COLOR}")
 
 
+def handle_multichat_files(
+    args: list[str], session: MultiChatSession, cli_history: InMemoryHistory
+) -> None:
+    session.context_manager.list_files()
+
+
+def handle_multichat_load(
+    args: list[str], session: MultiChatSession, cli_history: InMemoryHistory
+) -> None:
+    print(f"{SYSTEM_MSG}--> /load is not yet implemented for multi-chat.{RESET_COLOR}")
+
+
+def handle_multichat_forget(
+    args: list[str], session: MultiChatSession, cli_history: InMemoryHistory
+) -> None:
+    """Forgets the last N turns from the shared history."""
+    try:
+        num_turns = int(args[0]) if args else 1
+        if num_turns <= 0:
+            raise ValueError
+        # A multi-chat turn consists of a user prompt and two AI responses.
+        num_items_to_remove = num_turns * 3
+        current_len = len(session.state.shared_history)
+        if num_items_to_remove > current_len:
+            print(f"{SYSTEM_MSG}--> History is not long enough to forget.{RESET_COLOR}")
+            return
+        session.state.shared_history = session.state.shared_history[
+            :-num_items_to_remove
+        ]
+        plural = "s" if num_turns > 1 else ""
+        print(
+            f"{SYSTEM_MSG}--> Removed last {num_turns} turn{plural} from history.{RESET_COLOR}"
+        )
+    except (ValueError, IndexError):
+        print(f"{SYSTEM_MSG}--> Usage: /forget [N]{RESET_COLOR}")
+
+
+def handle_multichat_personas(
+    args: list[str], session: MultiChatSession, cli_history: InMemoryHistory
+) -> None:
+    # This function can be identical to the single-chat one
+    personas = persona_manager.list_personas()
+    if not personas:
+        print(f"{SYSTEM_MSG}--> No personas found.{RESET_COLOR}")
+        return
+    print(f"{SYSTEM_MSG}--- Available Personas ---{RESET_COLOR}")
+    for p in personas:
+        print(f"  - {p.filename.replace('.json', '')}: {p.description}")
+
+
+def handle_multichat_persona(
+    args: list[str], session: MultiChatSession, cli_history: InMemoryHistory
+) -> None:
+    """Handles loading or clearing a persona for a specific engine."""
+    if len(args) < 2:
+        print(
+            f"{SYSTEM_MSG}--> Usage: /persona <gpt|gem> <persona_name|clear>{RESET_COLOR}"
+        )
+        return
+
+    engine_alias, command = args[0].lower(), " ".join(args[1:])
+    engine_map = {"gpt": "openai", "gem": "gemini"}
+
+    if engine_alias not in engine_map:
+        print(f"{SYSTEM_MSG}--> Invalid engine alias. Use 'gpt' or 'gem'.{RESET_COLOR}")
+        return
+
+    target_engine = engine_map[engine_alias]
+
+    # Clear previous persona attachments for the target engine
+    if target_engine == "openai":
+        for path in session.state.openai_persona_attachments:
+            session.state.attachments.pop(path, None)
+        session.state.openai_persona_attachments.clear()
+    else:
+        for path in session.state.gemini_persona_attachments:
+            session.state.attachments.pop(path, None)
+        session.state.gemini_persona_attachments.clear()
+
+    if command.lower() == "clear":
+        if target_engine == "openai":
+            session.state.openai_persona = None
+        else:
+            session.state.gemini_persona = None
+        print(
+            f"{SYSTEM_MSG}--> Persona for {target_engine.capitalize()} cleared.{RESET_COLOR}"
+        )
+    else:
+        new_persona = persona_manager.load_persona(command)
+        if not new_persona:
+            print(f"{SYSTEM_MSG}--> Persona '{command}' not found.{RESET_COLOR}")
+            return
+
+        if target_engine == "openai":
+            session.state.openai_persona = new_persona
+            if new_persona.model:
+                session.state.openai_model = new_persona.model
+        else:  # gemini
+            session.state.gemini_persona = new_persona
+            if new_persona.model:
+                session.state.gemini_model = new_persona.model
+
+        # Add new attachments
+        if new_persona.attachments:
+            temp_context = ContextManager(
+                files_arg=new_persona.attachments, memory_enabled=False, exclude_arg=[]
+            )
+            session.state.attachments.update(temp_context.attachments)
+            attachment_keys = set(temp_context.attachments.keys())
+            if target_engine == "openai":
+                session.state.openai_persona_attachments.update(attachment_keys)
+            else:
+                session.state.gemini_persona_attachments.update(attachment_keys)
+            print(
+                f"{SYSTEM_MSG}--> Attached {len(attachment_keys)} file(s) from persona.{RESET_COLOR}"
+            )
+        print(
+            f"{SYSTEM_MSG}--> Switched {target_engine.capitalize()} to persona: '{new_persona.name}'{RESET_COLOR}"
+        )
+
+    session.context_manager.attachments = session.state.attachments
+
+
 # --- Command Dispatcher Maps ---
 
 COMMAND_MAP = {
@@ -972,4 +1124,9 @@ MULTICHAT_COMMAND_MAP = {
     "/set": handle_multichat_set,
     "/toolbar": handle_multichat_toolbar,
     "/theme": handle_multichat_theme,
+    "/files": handle_multichat_files,
+    "/load": handle_multichat_load,
+    "/forget": handle_multichat_forget,
+    "/personas": handle_multichat_personas,
+    "/persona": handle_multichat_persona,
 }

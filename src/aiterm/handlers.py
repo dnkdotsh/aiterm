@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # aiterm/handlers.py
 # aiterm: A command-line interface for interacting with AI models.
 # Copyright (C) 2025 Dank A. Saurus
@@ -6,7 +7,7 @@
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-# This program is distributed in the hope that it aint be useful,
+# This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 # GNU General Public License for more details.
@@ -19,12 +20,12 @@ import sys
 from pathlib import Path
 
 from . import api_client, config, workflows
+from . import personas as persona_manager
 from .chat_ui import MultiChatUI, SingleChatUI
 from .engine import get_engine
 from .managers.context_manager import ContextManager
 from .managers.multichat_manager import MultiChatSession
 from .managers.session_manager import SessionManager
-from .prompts import MULTICHAT_SYSTEM_PROMPT_GEMINI, MULTICHAT_SYSTEM_PROMPT_OPENAI
 from .session_state import MultiChatSessionState, SessionState
 from .settings import settings
 from .utils.config_loader import resolve_config_precedence
@@ -174,49 +175,66 @@ def handle_multichat_session(
     """Sets up and delegates an interactive session with both OpenAI and Gemini."""
     openai_key = api_client.check_api_keys("openai")
     gemini_key = api_client.check_api_keys("gemini")
+    openai_engine = get_engine("openai", openai_key)
+    gemini_engine = get_engine("gemini", gemini_key)
 
-    context = ContextManager(
-        files_arg=args.file, memory_enabled=False, exclude_arg=args.exclude
+    # Load personas if specified
+    persona_gpt = (
+        persona_manager.load_persona(args.persona_gpt) if args.persona_gpt else None
     )
-    attachments = context.attachments
-    image_data = context.image_data
+    persona_gem = (
+        persona_manager.load_persona(args.persona_gem) if args.persona_gem else None
+    )
 
-    attachment_texts = [
-        f"--- FILE: {path.as_posix()} ---\n{attachment.content}"
-        for path, attachment in attachments.items()
-    ]
-    attachments_str = "\n\n".join(attachment_texts)
+    # Aggregate attachments from CLI and both personas
+    all_files_to_process = list(args.file or [])
+    if persona_gpt and persona_gpt.attachments:
+        all_files_to_process.extend(persona_gpt.attachments)
+    if persona_gem and persona_gem.attachments:
+        all_files_to_process.extend(persona_gem.attachments)
 
-    base_system_prompt = ""
-    if args.system_prompt:
-        base_system_prompt = read_system_prompt(args.system_prompt)
-    if attachments_str:
-        base_system_prompt += f"\n\n--- ATTACHED FILES ---\n{attachments_str}"
+    context_manager = ContextManager(
+        files_arg=all_files_to_process,
+        memory_enabled=False,  # Memory not used in multichat
+        exclude_arg=args.exclude,
+    )
 
-    final_sys_prompts: dict[str, str] = {}
-    if base_system_prompt:
-        final_sys_prompts["openai"] = (
-            f"{base_system_prompt}\n\n---\n\n{MULTICHAT_SYSTEM_PROMPT_OPENAI}"
-        )
-        final_sys_prompts["gemini"] = (
-            f"{base_system_prompt}\n\n---\n\n{MULTICHAT_SYSTEM_PROMPT_GEMINI}"
-        )
-    else:
-        final_sys_prompts["openai"] = MULTICHAT_SYSTEM_PROMPT_OPENAI
-        final_sys_prompts["gemini"] = MULTICHAT_SYSTEM_PROMPT_GEMINI
+    # Determine which attachments belong to which persona for later management
+    gpt_persona_files = set(
+        p
+        for p in context_manager.attachments
+        if persona_gpt and str(p) in persona_gpt.attachments
+    )
+    gem_persona_files = set(
+        p
+        for p in context_manager.attachments
+        if persona_gem and str(p) in persona_gem.attachments
+    )
+
+    # Determine models, respecting persona overrides
+    openai_model = (
+        persona_gpt.model if persona_gpt and persona_gpt.model else args.model
+    ) or settings["default_openai_chat_model"]
+    gemini_model = (
+        persona_gem.model if persona_gem and persona_gem.model else args.model
+    ) or settings["default_gemini_model"]
 
     initial_state = MultiChatSessionState(
-        openai_engine=get_engine("openai", openai_key),
-        gemini_engine=get_engine("gemini", gemini_key),
-        openai_model=args.model or settings["default_openai_chat_model"],
-        gemini_model=args.model or settings["default_gemini_model"],
+        openai_engine=openai_engine,
+        gemini_engine=gemini_engine,
+        openai_model=openai_model,
+        gemini_model=gemini_model,
         max_tokens=args.max_tokens or settings["default_max_tokens"],
-        system_prompts=final_sys_prompts,
-        initial_image_data=image_data,
+        openai_persona=persona_gpt,
+        gemini_persona=persona_gem,
+        attachments=context_manager.attachments,
+        attached_images=context_manager.image_data,
+        openai_persona_attachments=gpt_persona_files,
+        gemini_persona_attachments=gem_persona_files,
         debug_active=args.debug,
     )
 
-    session = MultiChatSession(initial_state)
+    session = MultiChatSession(state=initial_state, context_manager=context_manager)
     multi_chat_ui = MultiChatUI(session, args.session_name, initial_prompt)
     multi_chat_ui.run()
 

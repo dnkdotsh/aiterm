@@ -115,25 +115,30 @@ Interactive Chat Commands:
     elif context == "multichat":
         help_text = """
 Multi-Chat Commands:
-  /exit [name]              End the session. Optionally provide a name for the log file.
-  /quit                     Exit immediately without saving.
-  /help                     Display this help message.
-  /history                  Print the JSON of the shared conversation history.
-  /clear                    Clear the current conversation history.
-  /state                    Print the current session state.
-  /debug                    Toggle session-specific raw API logging.
-  /remember                 Consolidates current chat into memory.
-  /save <name> [--stay] [--remember]
-                            Save the session. A name is required.
-                            --stay:      Do not exit after saving.
-                            --remember:  Update persistent memory before saving.
-  /model <gpt|gem> <name>   Change the model for the specified engine.
-  /max-tokens <num>         Set max output tokens for the session.
-  /theme <name>             Switch the display theme. Run without a name to list themes.
-  /toolbar [on|off]         Control the bottom toolbar.
-  /set [key] [val]          Change a setting (e.g., /set toolbar_enabled false).
-  /ai <gpt|gem> [prompt]    Send a targeted prompt to only one AI.
-                            If no prompt, the AI is asked to continue.
+  /exit [name]                End the session. Optionally provide a name for the log file.
+  /quit                       Exit immediately without saving.
+  /help                       Display this help message.
+  /history                    Print the JSON of the shared conversation history.
+  /clear                      Clear the current conversation history.
+  /state                      Print the current session state.
+  /debug                      Toggle session-specific raw API logging.
+  /remember                   (Not Implemented) Consolidates current chat into memory.
+  /forget [N]                 Removes the last N turns from context (default: 1).
+  /save <name> [--stay]       Save the session. A name is required.
+  /load <name>                (Not Implemented) Load a multi-chat session.
+  /attach <path>              Attach a file or directory to the shared context.
+  /detach <name>              Detach a file from the context by its filename.
+  /files                      List all currently attached text files.
+  /refresh [term]             Re-read attached files to update the context.
+  /persona <gpt|gem> <name>   Switch the persona for a specific AI.
+  /personas                   List all available personas.
+  /model <gpt|gem> <name>     Change the model for the specified engine.
+  /max-tokens <num>           Set max output tokens for the session.
+  /theme <name>               Switch the display theme. Run without a name to list themes.
+  /toolbar [on|off]           Control the bottom toolbar.
+  /set [key] [val]            Change a setting (e.g., /set toolbar_enabled false).
+  /ai <gpt|gem> [prompt]      Send a targeted prompt to only one AI.
+                              If no prompt, the AI is asked to continue.
 """
     else:
         help_text = "No help available for this context."

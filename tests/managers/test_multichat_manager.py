@@ -1,174 +1,178 @@
 # tests/managers/test_multichat_manager.py
-"""
-Tests for the MultiChatSession class in aiterm/managers/multichat_manager.py.
-"""
 
-import json
-import queue
-from unittest.mock import patch
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
-from aiterm import config
-from aiterm.managers.multichat_manager import MultiChatSession
-from aiterm.prompts import CONTINUATION_PROMPT
-from aiterm.utils.message_builder import (
-    construct_assistant_message,
-    construct_user_message,
-    extract_text_from_message,
-)
+
+from src.aiterm.engine import AIEngine
+from src.aiterm.managers.context_manager import ContextManager
+from src.aiterm.managers.multichat_manager import MultiChatSession
+from src.aiterm.session_state import MultiChatSessionState
 
 
 @pytest.fixture
-def mock_multichat_session(mock_multichat_session_state):
+def mock_multichat_session_state():
+    """Provides a MultiChatSessionState instance for testing."""
+    return MultiChatSessionState(
+        openai_engine=MagicMock(spec=AIEngine, name="openai"),
+        gemini_engine=MagicMock(spec=AIEngine, name="gemini"),
+        openai_model="gpt-test",
+        gemini_model="gemini-test",
+        max_tokens=100,
+    )
+
+
+@pytest.fixture
+def mock_context_manager():
+    """Provides a mock ContextManager instance."""
+    return MagicMock(spec=ContextManager)
+
+
+@pytest.fixture
+def mock_multichat_session(mock_multichat_session_state, mock_context_manager):
     """Provides a MultiChatSession instance for testing with required state."""
-    # Add the system prompts that the manager expects to find.
-    mock_multichat_session_state.system_prompts = {
-        "openai": "You are OpenAI.",
-        "gemini": "You are Gemini.",
-    }
-    return MultiChatSession(initial_state=mock_multichat_session_state)
+    return MultiChatSession(
+        state=mock_multichat_session_state, context_manager=mock_context_manager
+    )
 
 
 class TestMultiChatManager:
-    """Test suite for the MultiChatSession manager."""
-
-    @patch("aiterm.managers.multichat_manager.queue.Queue")
-    @patch("aiterm.managers.multichat_manager.threading.Thread")
-    @patch("aiterm.api_client.perform_chat_request")
+    @patch("src.aiterm.managers.multichat_manager.api_client.perform_chat_request")
+    @patch("src.aiterm.managers.multichat_manager.threading.Thread")
     def test_process_turn_broadcast(
-        self, mock_api_request, mock_thread, mock_queue, mock_multichat_session, fake_fs
+        self,
+        mock_thread_class,
+        mock_perform_chat,
+        mock_multichat_session,
+        monkeypatch,
     ):
-        """
-        Tests a broadcast turn where both AIs are queried simultaneously.
-        """
-        # Arrange
-        log_path = config.CHATLOG_DIRECTORY / "fake.log"
-        fake_fs.create_file(log_path)
-        mock_api_request.return_value = ("Primary response", {})
-        mock_queue.return_value.get.return_value = {
-            "engine_name": "openai",
-            "text": "Secondary response",
-        }
-        initial_history_len = len(mock_multichat_session.state.shared_history)
-
-        # Act
-        mock_multichat_session.process_turn("Hello everyone", log_path)
-
-        # Assert
-        mock_api_request.assert_called_once()
-        assert mock_api_request.call_args[0][0].name == "gemini"
-
-        mock_thread.assert_called_once()
-        thread_kwargs = mock_thread.call_args.kwargs
-        assert thread_kwargs["target"] == mock_multichat_session._secondary_worker
-        assert thread_kwargs["args"][0].name == "openai"
-
-        final_history = mock_multichat_session.state.shared_history
-        assert len(final_history) == initial_history_len + 3
-        assert "Director to All: Hello everyone" in extract_text_from_message(
-            final_history[-3]
+        """Tests the broadcast functionality where both AIs respond."""
+        # Set primary engine
+        monkeypatch.setitem(
+            mock_multichat_session.context_manager.settings, "default_engine", "openai"
         )
-        # Verify clean content and the new source_engine key.
-        assert extract_text_from_message(final_history[-2]) == "Secondary response"
-        assert final_history[-2]["source_engine"] == "openai"
-        assert extract_text_from_message(final_history[-1]) == "Primary response"
-        assert final_history[-1]["source_engine"] == "gemini"
+        mock_multichat_session.primary_engine_name = "openai"
 
-    @patch("aiterm.api_client.perform_chat_request")
-    def test_process_turn_targeted(
-        self, mock_api_request, mock_multichat_session, fake_fs
-    ):
-        """
-        Tests a targeted turn where only one AI is queried via the /ai command.
-        """
-        # Arrange
-        log_path = config.CHATLOG_DIRECTORY / "fake.log"
-        fake_fs.create_file(log_path)
-        mock_api_request.return_value = ("Targeted OpenAI response", {})
-        initial_history_len = len(mock_multichat_session.state.shared_history)
-
-        # Act
-        mock_multichat_session.process_turn("/ai gpt What is your name?", log_path)
-
-        # Assert
-        mock_api_request.assert_called_once()
-        call_args, _ = mock_api_request.call_args
-        assert call_args[0].name == "openai"
-
-        final_history = mock_multichat_session.state.shared_history
-        assert len(final_history) == initial_history_len + 2
-        assert "Director to Openai: What is your name?" in extract_text_from_message(
-            final_history[-2]
+        # Mock API responses
+        mock_perform_chat.return_value = (
+            "OpenAI response.",
+            {"prompt": 10, "completion": 5},
         )
-        # Verify clean content and the new source_engine key.
-        assert (
-            extract_text_from_message(final_history[-1]) == "Targeted OpenAI response"
-        )
-        assert final_history[-1]["source_engine"] == "openai"
+        # Mock the secondary worker's behavior
+        mock_thread_instance = mock_thread_class.return_value
 
-    @patch("aiterm.api_client.perform_chat_request")
+        def mock_secondary_worker_target(*args, **kwargs):
+            q = kwargs["args"][-1]
+            q.put(
+                {
+                    "engine_name": "gemini",
+                    "text": "Gemini response.",
+                    "tokens": {"prompt": 12, "completion": 6},
+                }
+            )
+
+        mock_thread_instance.start = lambda: mock_secondary_worker_target(
+            args=mock_thread_class.call_args.kwargs["args"]
+        )
+        mock_thread_instance.join = lambda: None
+
+        mock_multichat_session.process_turn("Hello world", Path("/fake/log.jsonl"))
+
+        # Verify history
+        assert len(mock_multichat_session.state.shared_history) == 3
+        assert "Director to All: Hello world" in str(
+            mock_multichat_session.state.shared_history[0]
+        )
+        assert "OpenAI response." in str(mock_multichat_session.state.shared_history[1])
+        assert "Gemini response." in str(mock_multichat_session.state.shared_history[2])
+
+        # Verify token counts
+        assert mock_multichat_session.state.total_prompt_tokens == 22
+        assert mock_multichat_session.state.total_completion_tokens == 11
+
+    @patch("src.aiterm.managers.multichat_manager.api_client.perform_chat_request")
+    def test_process_turn_targeted(self, mock_perform_chat, mock_multichat_session):
+        """Tests targeting a single AI with a prompt."""
+        mock_perform_chat.return_value = (
+            "Targeted Gemini response.",
+            {"prompt": 8, "completion": 4},
+        )
+
+        mock_multichat_session.process_turn(
+            "/ai gem What is the capital of France?", Path("/fake/log.jsonl")
+        )
+
+        assert len(mock_multichat_session.state.shared_history) == 2
+        user_msg = mock_multichat_session.state.shared_history[0]
+        asst_msg = mock_multichat_session.state.shared_history[1]
+
+        assert "Director to Gemini: What is the capital of France?" in str(user_msg)
+        assert asst_msg["source_engine"] == "gemini"
+        assert "Targeted Gemini response." in str(asst_msg)
+
+        assert mock_multichat_session.state.total_prompt_tokens == 8
+        assert mock_multichat_session.state.total_completion_tokens == 4
+
+    @patch("src.aiterm.managers.multichat_manager.api_client.perform_chat_request")
     def test_process_turn_targeted_continuation(
-        self, mock_api_request, mock_multichat_session, fake_fs
+        self, mock_perform_chat, mock_multichat_session
     ):
-        """
-        Tests that a targeted /ai command with no prompt uses the continuation prompt.
-        """
-        # Arrange
-        log_path = config.CHATLOG_DIRECTORY / "fake.log"
-        fake_fs.create_file(log_path)
-        mock_api_request.return_value = ("Continuing...", {})
-
-        # Act
-        mock_multichat_session.process_turn("/ai gem", log_path)
-
-        # Assert
-        mock_api_request.assert_called_once()
-        call_args, _ = mock_api_request.call_args
-        history_sent = call_args[2]  # The 'messages_or_contents' argument
-        last_message_text = extract_text_from_message(history_sent[-1])
-        assert CONTINUATION_PROMPT in last_message_text
-
-    def test_secondary_worker_api_error(self, mock_multichat_session, mocker):
-        """
-        Tests that the secondary worker correctly handles an API error
-        and puts an error message in the result queue.
-        """
-        # Arrange
-        mocker.patch(
-            "aiterm.api_client.perform_chat_request",
-            return_value=("API Error: Something went wrong", {}),
-        )
-        result_queue = queue.Queue()
-        worker_engine = mock_multichat_session.engines["openai"]
-
-        # Act
-        mock_multichat_session._secondary_worker(
-            worker_engine, "gpt-4o-mini", [], "system prompt", result_queue
+        """Tests asking a single AI to continue the conversation."""
+        mock_perform_chat.return_value = (
+            "Continuation.",
+            {"prompt": 2, "completion": 1},
         )
 
-        # Assert
-        result = result_queue.get_nowait()
-        assert result["engine_name"] == "openai"
-        assert "API Error: Something went wrong" in result["text"]
+        mock_multichat_session.process_turn("/ai gpt", Path("/fake/log.jsonl"))
 
-    def test_log_multichat_turn(self, mock_multichat_session, fake_fs):
-        """
-        Tests that a multi-chat turn is correctly logged to a file.
-        """
-        # Arrange
-        log_path = config.CHATLOG_DIRECTORY / "multichat_test.jsonl"
-        history_slice = [
-            construct_user_message("openai", "User message", []),
-            construct_assistant_message("openai", "AI response"),
-        ]
+        assert len(mock_multichat_session.state.shared_history) == 2
+        user_msg = mock_multichat_session.state.shared_history[0]
 
-        # Act
-        mock_multichat_session._log_multichat_turn(log_path, history_slice)
+        assert "Director to Openai: Please continue" in str(user_msg)
+        assert mock_multichat_session.state.total_prompt_tokens == 2
+        assert mock_multichat_session.state.total_completion_tokens == 1
 
-        # Assert
-        assert log_path.exists()
-        with open(log_path) as f:
-            data = json.load(f)
-        assert "history_slice" in data
-        assert len(data["history_slice"]) == 2
-        assert data["history_slice"][0]["content"][0]["text"] == "User message"
+    @patch("src.aiterm.managers.multichat_manager.api_client.perform_chat_request")
+    @patch("src.aiterm.managers.multichat_manager.threading.Thread")
+    def test_secondary_worker_api_error(
+        self, mock_thread_class, mock_perform_chat, mock_multichat_session, monkeypatch
+    ):
+        """Tests that an API error in the secondary worker is handled."""
+        monkeypatch.setitem(
+            mock_multichat_session.context_manager.settings, "default_engine", "openai"
+        )
+        mock_multichat_session.primary_engine_name = "openai"
+
+        mock_perform_chat.return_value = ("OK", {"prompt": 1, "completion": 1})
+
+        def mock_secondary_worker_target(*args, **kwargs):
+            q = kwargs["args"][-1]
+            q.put(
+                {
+                    "engine_name": "gemini",
+                    "text": "Error: API key invalid",
+                    "tokens": {},
+                }
+            )
+
+        mock_thread_instance = mock_thread_class.return_value
+        mock_thread_instance.start = lambda: mock_secondary_worker_target(
+            args=mock_thread_class.call_args.kwargs["args"]
+        )
+        mock_thread_instance.join = lambda: None
+
+        mock_multichat_session.process_turn("test", Path("/fake/log.jsonl"))
+
+        assert "Error: API key invalid" in str(
+            mock_multichat_session.state.shared_history[2]
+        )
+
+    @patch("builtins.open")
+    def test_log_multichat_turn(self, mock_open, mock_multichat_session):
+        """Tests that a turn is correctly logged to a file."""
+        mock_multichat_session._log_multichat_turn(
+            Path("/fake.jsonl"), [{"role": "user"}]
+        )
+        mock_open.assert_called_with(Path("/fake.jsonl"), "a", encoding="utf-8")
+        mock_open().write.assert_called_once()

@@ -71,8 +71,14 @@ class MultiChatSessionState:
     openai_model: str
     gemini_model: str
     max_tokens: int
-    system_prompts: dict[str, str] = field(default_factory=dict)
-    initial_image_data: list[dict[str, Any]] = field(default_factory=list)
+    # Persona and context management
+    openai_persona: persona_manager.Persona | None = None
+    gemini_persona: persona_manager.Persona | None = None
+    attachments: dict[Path, Attachment] = field(default_factory=dict)
+    openai_persona_attachments: set[Path] = field(default_factory=set)
+    gemini_persona_attachments: set[Path] = field(default_factory=set)
+    attached_images: list[dict[str, Any]] = field(default_factory=list)
+    # Session state
     shared_history: list[dict[str, Any]] = field(default_factory=list)
     command_history: list[str] = field(default_factory=list)
     debug_active: bool = False

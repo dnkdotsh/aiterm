@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .. import api_client
+from .. import prompts as base_prompts
 from .. import settings as app_settings
 from ..logger import log
 from ..prompts import CONTINUATION_PROMPT
@@ -47,6 +48,7 @@ from ..utils.message_builder import (
 
 if TYPE_CHECKING:
     from ..engine import AIEngine
+    from .context_manager import ContextManager
 
 
 class MultiChatSession:
@@ -54,9 +56,11 @@ class MultiChatSession:
 
     def __init__(
         self,
-        initial_state: MultiChatSessionState,
+        state: MultiChatSessionState,
+        context_manager: ContextManager,
     ):
-        self.state = initial_state
+        self.state = state
+        self.context_manager = context_manager
         self.primary_engine_name = app_settings.settings["default_engine"]
         self.engines = {
             "openai": self.state.openai_engine,
@@ -72,6 +76,39 @@ class MultiChatSession:
             "gem": "gemini",
             "gemini": "gemini",
         }
+
+    def _assemble_full_system_prompt(self, engine_name: str) -> str | None:
+        """Constructs the complete system prompt for a given engine."""
+        prompt_parts = []
+        persona = (
+            self.state.openai_persona
+            if engine_name == "openai"
+            else self.state.gemini_persona
+        )
+
+        # 1. Add the persona's base system prompt.
+        if persona and persona.system_prompt:
+            prompt_parts.append(persona.system_prompt)
+
+        # 2. Add the content of any attached files.
+        if self.state.attachments:
+            attachment_texts = [
+                f"--- FILE: {path.as_posix()} ---\n{attachment.content}"
+                for path, attachment in self.state.attachments.items()
+            ]
+            prompt_parts.append(
+                "--- ATTACHED FILES ---\n" + "\n\n".join(attachment_texts)
+            )
+
+        # 3. Add the base multi-chat instruction prompt.
+        base_multichat_prompt = (
+            base_prompts.MULTICHAT_SYSTEM_PROMPT_OPENAI
+            if engine_name == "openai"
+            else base_prompts.MULTICHAT_SYSTEM_PROMPT_GEMINI
+        )
+        prompt_parts.append(base_multichat_prompt)
+
+        return "\n\n---\n\n".join(prompt_parts) if prompt_parts else None
 
     def _secondary_worker(
         self,
@@ -121,7 +158,7 @@ class MultiChatSession:
             user_msg = construct_user_message(
                 "openai",  # Base format, will be translated
                 user_msg_text,
-                self.state.initial_image_data if is_first_turn else [],
+                self.state.attached_images if is_first_turn else [],
             )
             current_history = translate_history(
                 self.state.shared_history + [user_msg], target_engine_name
@@ -139,7 +176,7 @@ class MultiChatSession:
                 engine,
                 model,
                 current_history,
-                self.state.system_prompts[target_engine_name],
+                self._assemble_full_system_prompt(target_engine_name),
                 self.state.max_tokens,
                 stream=True,
                 session_raw_logs=srl_list,
@@ -158,14 +195,16 @@ class MultiChatSession:
             self._log_multichat_turn(log_filepath, self.state.shared_history[-2:])
         else:
             primary_engine = self.engines[self.primary_engine_name]
-            secondary_engine = self.engines[
+            secondary_engine_name = (
                 "gemini" if self.primary_engine_name == "openai" else "openai"
-            ]
+            )
+            secondary_engine = self.engines[secondary_engine_name]
+
             user_msg_text = f"Director to All: {prompt_text}"
             user_msg = construct_user_message(
                 "openai",  # Base format, will be translated
                 user_msg_text,
-                self.state.initial_image_data if is_first_turn else [],
+                self.state.attached_images if is_first_turn else [],
             )
             result_queue = queue.Queue()
             history_primary = translate_history(
@@ -181,7 +220,7 @@ class MultiChatSession:
                     secondary_engine,
                     self.models[secondary_engine.name],
                     history_secondary,
-                    self.state.system_prompts[secondary_engine.name],
+                    self._assemble_full_system_prompt(secondary_engine_name),
                     result_queue,
                 ),
             )
@@ -196,7 +235,7 @@ class MultiChatSession:
                 primary_engine,
                 self.models[primary_engine.name],
                 history_primary,
-                self.state.system_prompts[primary_engine.name],
+                self._assemble_full_system_prompt(primary_engine.name),
                 self.state.max_tokens,
                 stream=True,
                 session_raw_logs=srl_list,
