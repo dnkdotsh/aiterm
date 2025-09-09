@@ -7,7 +7,7 @@ A flexible and robust command-line interface for interacting with multiple AI mo
 -   **Multi-Engine Chat**: Engage with OpenAI, Gemini, or both simultaneously for comparative analysis.
 -   **Dynamic File Context**: Attach, detach, and refresh local files or entire directories mid-conversation to provide deep, evolving context for the AI.
 -   **Reusable Personas**: Define AI "personas" with pre-configured system prompts, models, and settings for different tasks (e.g., `code_reviewer`, `technical_writer`).
--   **Powerful Memory System**: Consolidate conversations into a long-term memory file that the AI learns from across sessions.
+-   **Powerful Memory System**: Consolidate conversations into a long-term memory file. The AI learns from this memory across sessions, and you can selectively remove information with an AI-powered `/forget` command.
 -   **Full Session Management**: Save interactive sessions to a file and resume them later, preserving the full conversation history, model state, and file context.
 -   **Built-in Review Tool**: An interactive TUI (`aiterm review`) to browse, replay, rename, or re-enter past chat logs and saved sessions.
 -   **Image Generation**: Generate images using DALL-E 3 directly from the command line or within an interactive chat.

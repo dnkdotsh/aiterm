@@ -9,8 +9,6 @@ Random mix of bugs to fix, features I want, and crazy ideas I might try..
   - Sometimes the API sends malformed chunks that break the parser
 
 ## Features I Actually Want to Build
-- Interactive image prompt helper
-  - Chat with AI to craft better prompts before spending $0.20 on garbage images
 - Claude support
   - Add Anthropic's API so all the AIs can argue with each other
 - Export conversations to markdown/PDF

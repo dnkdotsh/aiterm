@@ -88,9 +88,14 @@ During an interactive session, type these commands at the `You:` or `Director>` 
 -   `/attach <path>`: Attach a file or directory to the session context.
 -   `/detach <name>`: Detach a file from the context by its filename.
 -   `/files`: List all currently attached text files in a tree view.
+-   `/print <filename>`: Print the content of an attached file to the console.
 -   `/refresh [term]`: Re-read attached files. If `[term]` is given, only refreshes files whose names contain that term.
 -   `/memory`: View the contents of the persistent memory file.
 -   `/remember [text]`: Injects `[text]` directly into persistent memory. If run without text, it consolidates the current chat into memory.
+-   `/forget [N | <topic> --memory]`:
+    -   `/forget [N]`: Removes the last `N` conversational turns (user + assistant) from the current session's context. `N` defaults to `1`.
+    -   `/forget <topic> --memory`: Rewrites the persistent memory file to remove all information related to the specified `<topic>`.
+    -   **Warning**: The `--memory` flag is a destructive, AI-powered operation that permanently alters the long-term memory file.
 
 ### AI & Model Control
 -   `/engine [name]`: Switch AI engine (`openai` or `gemini`). Toggles between them if no name is given.

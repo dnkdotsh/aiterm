@@ -16,9 +16,9 @@ This document goes beyond the basic commands found in `README.md` to demonstrate
 
 The following workflows are built on three core features:
 
-*   **Personas (`-P`, `/persona`):** Pre-configuring the AI's role, model, and instructions is the key to getting high-quality, specialized responses. A good persona saves you from retyping the same system prompt every time.
+*   **Personas (`-P`, `/persona`):** Pre-configuring the AI's role, model, and instructions is the key to getting high-quality, specialized responses. A good persona saves you from retyping the same system prompt every time. The built-in `aiterm_assistant` persona is a great way to learn about the tool itself.
 *   **Context Management (`-f`, `-x`, `/attach`, `/refresh`):** The ability to provide the AI with the *exact* files it needs to reason about a problem. Attaching a directory (`-f ./src`) is often the fastest way to get started.
-*   **Session & Memory (`/save`, `/load`, `/remember`):** For tasks that take more than a few minutes, saving your session preserves the entire conversation history and context. Using `/remember` allows the AI to build a long-term understanding of your project or goals across different sessions.
+*   **Session & Memory (`/save`, `/load`, `/remember`, `/forget`):** For tasks that take more than a few minutes, saving your session preserves the entire conversation history and context. Using `/remember` allows the AI to build a long-term understanding of your project, while `/forget` can be used to correct the AI's path or remove sensitive information.
 
 ---
 
@@ -40,23 +40,29 @@ The following workflows are built on three core features:
 
     *The AI will now analyze the files you provided and give you its initial feedback.*
 
-3.  **Modify the code.** Based on the AI's suggestion, you edit `data_processor.py` in your IDE to fix a potential bug.
+3.  **Correct a wrong turn (Optional).** The AI suggests a complex refactor, but you realize your prompt was misleading. Instead of continuing, you can remove the last conversational turn to get it back on track.
 
-4.  **Refresh the context.** Back in `aiterm`, enter the following command at the `You:` prompt:
+    > **You:** `/forget`
+
+    *The system confirms the last exchange was removed. You can now re-phrase your prompt for a better result.*
+
+4.  **Modify the code.** Based on the AI's new, more accurate suggestion, you edit `data_processor.py` in your IDE to fix the bug.
+
+5.  **Refresh the context.** Back in `aiterm`, enter the following command at the `You:` prompt:
 
     > `/refresh data_processor.py`
 
     *The system will confirm the file has been re-read and the AI has been notified of the update.*
 
-5.  **Re-evaluate the code.** Now that the AI's context is fresh, ask it to review your changes.
+6.  **Re-evaluate the code.** Now that the AI's context is fresh, ask it to review your changes.
 
     > **You:** I've updated the file as we discussed. Does the new logic in `data_processor.py` resolve the potential issue you identified?
 
-6.  **End the session.** Once you're done, save the log with a descriptive name.
+7.  **End the session.** Once you're done, save the log with a descriptive name.
 
     > **You:** `/exit feature_x_debug_session`
 
-**Why this is powerful:** You never left the terminal. The `/refresh` command is the key to an iterative workflow, allowing the AI to see your changes in real-time without the massive overhead of re-attaching or re-pasting code.
+**Why this is powerful:** You never left the terminal. The `/refresh` command is the key to an iterative workflow, allowing the AI to see your changes in real-time. The `/forget` command acts as an "undo" for the conversation, preventing the AI from getting stuck on an incorrect path.
 
 ---
 

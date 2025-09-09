@@ -109,7 +109,7 @@ Interactive Chat Commands:
   /theme <name>     Switch the display theme. Run without a name to list themes.
   /toolbar [on|off|toggle <comp>]
                     Control the bottom toolbar. Components: io, live, model, persona.
-  /set [key] [val]  Change a setting (e.g., /set stream false).
+  /set <key> <val>  Change a setting (e.g., /set stream false).
   /max-tokens [num] Set max tokens for the session.
 """
     elif context == "multichat":
