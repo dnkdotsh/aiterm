@@ -28,7 +28,7 @@ dependencies = [
 ]
 
 [project.scripts]
-aiterm = "aiterm.aiterm:main"
+aiterm = "aiterm.cli:main"
 
 [project.optional-dependencies]
 test = [

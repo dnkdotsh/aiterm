@@ -35,6 +35,7 @@ from .managers.context_manager import Attachment
 class SessionState:
     """A dataclass to hold the state of an interactive chat session."""
 
+    # Fields without default values must come first.
     engine: AIEngine
     model: str
     system_prompt: str | None
@@ -42,6 +43,8 @@ class SessionState:
     current_persona: persona_manager.Persona | None
     max_tokens: int | None
     memory_enabled: bool
+
+    # Fields with default values follow.
     attachments: dict[Path, Attachment] = field(default_factory=dict)
     # Tracks which attachments were added by a persona, to be removed on switch.
     persona_attachments: set[Path] = field(default_factory=set)
@@ -66,19 +69,20 @@ class SessionState:
 class MultiChatSessionState:
     """Holds the state for a multi-chat session."""
 
+    # Fields without default values must come first.
     openai_engine: AIEngine
     gemini_engine: AIEngine
     openai_model: str
     gemini_model: str
     max_tokens: int
-    # Persona and context management
+
+    # Fields with default values follow.
     openai_persona: persona_manager.Persona | None = None
     gemini_persona: persona_manager.Persona | None = None
     attachments: dict[Path, Attachment] = field(default_factory=dict)
     openai_persona_attachments: set[Path] = field(default_factory=set)
     gemini_persona_attachments: set[Path] = field(default_factory=set)
     attached_images: list[dict[str, Any]] = field(default_factory=list)
-    # Session state
     shared_history: list[dict[str, Any]] = field(default_factory=list)
     command_history: list[str] = field(default_factory=list)
     debug_active: bool = False

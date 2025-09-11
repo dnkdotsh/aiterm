@@ -28,7 +28,7 @@ import json
 import shutil
 import sys
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.application import get_app
@@ -40,8 +40,6 @@ from . import commands, config, theme_manager
 from . import settings as app_settings
 from .api_client import ApiRequestError
 from .logger import log
-from .managers.multichat_manager import MultiChatSession
-from .managers.session_manager import SessionManager
 from .utils.formatters import (
     DIRECTOR_PROMPT,
     RESET_COLOR,
@@ -53,53 +51,85 @@ from .utils.formatters import (
 from .utils.message_builder import extract_text_from_message
 from .utils.redaction import redact_sensitive_info
 
+if TYPE_CHECKING:
+    from .managers.multichat_manager import MultiChatSession
+    from .managers.session_manager import SessionManager
 
-class SingleChatUI:
-    """Manages the lifecycle and I/O for an interactive single-chat session."""
 
-    def __init__(self, session_manager: SessionManager, session_name: str | None):
-        self.session = session_manager
-        # This instance needs its own reference to the session_name for the run loop.
+class BaseChatUI:
+    """A base class for chat UIs containing shared logic."""
+
+    def __init__(
+        self, session: SessionManager | MultiChatSession, session_name: str | None
+    ):
+        self.session = session
         self.session_name = session_name
-        # Pass session_name to the manager for potential use in workflows
-        # (e.g., image generation logging)
-        self.session.session_name = session_name
 
     def _create_style_from_theme(self) -> Style:
         """Creates a prompt_toolkit Style object from the current theme."""
+        theme = theme_manager.ACTIVE_THEME
+        style_dict = {
+            "bottom-toolbar": theme.get("style_bottom_toolbar_background", ""),
+            "bottom-toolbar.separator": theme.get("style_bottom_toolbar_separator", ""),
+            "bottom-toolbar.tokens": theme.get("style_bottom_toolbar_tokens", ""),
+            "bottom-toolbar.io": theme.get("style_bottom_toolbar_io", ""),
+            "bottom-toolbar.model": theme.get("style_bottom_toolbar_model", ""),
+            "bottom-toolbar.persona": theme.get("style_bottom_toolbar_persona", ""),
+            "bottom-toolbar.live": theme.get("style_bottom_toolbar_live", ""),
+        }
         try:
-            return Style.from_dict(
-                {
-                    # Apply background to the entire toolbar container
-                    "bottom-toolbar": theme_manager.ACTIVE_THEME.get(
-                        "style_bottom_toolbar_background", ""
-                    ),
-                    "bottom-toolbar.separator": theme_manager.ACTIVE_THEME.get(
-                        "style_bottom_toolbar_separator", ""
-                    ),
-                    "bottom-toolbar.tokens": theme_manager.ACTIVE_THEME.get(
-                        "style_bottom_toolbar_tokens", ""
-                    ),
-                    "bottom-toolbar.io": theme_manager.ACTIVE_THEME.get(
-                        "style_bottom_toolbar_io", ""
-                    ),
-                    "bottom-toolbar.model": theme_manager.ACTIVE_THEME.get(
-                        "style_bottom_toolbar_model", ""
-                    ),
-                    "bottom-toolbar.persona": theme_manager.ACTIVE_THEME.get(
-                        "style_bottom_toolbar_persona", ""
-                    ),
-                    "bottom-toolbar.live": theme_manager.ACTIVE_THEME.get(
-                        "style_bottom_toolbar_live", ""
-                    ),
-                }
-            )
+            return Style.from_dict(style_dict)
         except (ValueError, TypeError) as e:
             print(
                 f"{SYSTEM_MSG}--> Warning: Invalid theme style format detected: {e}{RESET_COLOR}"
             )
             log.warning("Invalid theme style format: %s", e)
             return Style.from_dict({})
+
+    def _build_toolbar_from_components(
+        self, component_map: dict, order: list[str]
+    ) -> Any | None:
+        """
+        Generic helper to construct the prompt_toolkit toolbar content from a
+        map of components and a priority order.
+        """
+        width = shutil.get_terminal_size().columns
+        styled_parts = []
+        current_length = 0
+        separator = app_settings.settings["toolbar_separator"]
+        sep_len = len(separator)
+        sep_style_str = "class:bottom-toolbar.separator"
+
+        for key in order:
+            if key not in component_map:
+                continue
+
+            is_enabled, style_class, text = component_map[key]
+            if not is_enabled or not text:
+                continue
+
+            part_len = len(text)
+            required_len = part_len + (sep_len if styled_parts else 0)
+
+            if current_length + required_len > width:
+                break
+
+            if styled_parts:
+                styled_parts.append((sep_style_str, separator))
+            styled_parts.append((style_class, text))
+            current_length += required_len
+
+        return styled_parts
+
+
+class SingleChatUI(BaseChatUI):
+    """Manages the lifecycle and I/O for an interactive single-chat session."""
+
+    def __init__(self, session_manager: SessionManager, session_name: str | None):
+        super().__init__(session_manager, session_name)
+        # Pass session_name to the manager for potential use in workflows
+        # (e.g., image generation logging)
+        self.session.session_name = session_name
 
     def _get_bottom_toolbar_content(self) -> Any | None:
         """Constructs the dynamic content for the prompt_toolkit bottom toolbar."""
@@ -148,34 +178,7 @@ class SingleChatUI:
         }
 
         order = app_settings.settings["toolbar_priority_order"].split(",")
-        width = shutil.get_terminal_size().columns
-
-        styled_parts = []
-        current_length = 0
-        separator = app_settings.settings["toolbar_separator"]
-        sep_len = len(separator)
-        sep_style_str = "class:bottom-toolbar.separator"
-
-        for key in order:
-            if key not in component_map:
-                continue
-
-            is_enabled, style_class, text = component_map[key]
-            if not is_enabled or not text:
-                continue
-
-            part_len = len(text)
-            required_len = part_len + (sep_len if styled_parts else 0)
-
-            if current_length + required_len > width:
-                break
-
-            if styled_parts:
-                styled_parts.append((sep_style_str, separator))
-            styled_parts.append((style_class, text))
-            current_length += required_len
-
-        return styled_parts
+        return self._build_toolbar_from_components(component_map, order)
 
     def run(self) -> None:
         log_filename_base = (
@@ -209,6 +212,7 @@ class SingleChatUI:
                     bottom_toolbar=toolbar_content,
                     refresh_interval=0.5,
                 ).strip()
+
                 if not user_input:
                     sys.stdout.write("\x1b[1A\x1b[2K")
                     sys.stdout.flush()
@@ -275,7 +279,7 @@ class SingleChatUI:
             log.warning("Could not write to session log file: %s", e)
 
 
-class MultiChatUI:
+class MultiChatUI(BaseChatUI):
     """Manages the UI lifecycle and I/O for an interactive multi-chat session."""
 
     def __init__(
@@ -284,38 +288,8 @@ class MultiChatUI:
         session_name: str | None,
         initial_prompt: str | None,
     ):
-        self.session = session
-        self.session_name = session_name
+        super().__init__(session, session_name)
         self.initial_prompt = initial_prompt
-
-    def _create_style_from_theme(self) -> Style:
-        """Creates a prompt_toolkit Style object from the current theme."""
-        try:
-            return Style.from_dict(
-                {
-                    "bottom-toolbar": theme_manager.ACTIVE_THEME.get(
-                        "style_bottom_toolbar_background", ""
-                    ),
-                    "bottom-toolbar.separator": theme_manager.ACTIVE_THEME.get(
-                        "style_bottom_toolbar_separator", ""
-                    ),
-                    "bottom-toolbar.tokens": theme_manager.ACTIVE_THEME.get(
-                        "style_bottom_toolbar_tokens", ""
-                    ),
-                    "bottom-toolbar.io": theme_manager.ACTIVE_THEME.get(
-                        "style_bottom_toolbar_io", ""
-                    ),
-                    "bottom-toolbar.model": theme_manager.ACTIVE_THEME.get(
-                        "style_bottom_toolbar_model", ""
-                    ),
-                }
-            )
-        except (ValueError, TypeError) as e:
-            print(
-                f"{SYSTEM_MSG}--> Warning: Invalid theme style format detected: {e}{RESET_COLOR}"
-            )
-            log.warning("Invalid theme style format: %s", e)
-            return Style.from_dict({})
 
     def _get_bottom_toolbar_content(self) -> Any | None:
         """Constructs the dynamic content for the prompt_toolkit bottom toolbar."""
@@ -339,34 +313,7 @@ class MultiChatUI:
 
         # Simplified priority order for multichat
         order = ["tokens", "models", "io"]
-        width = shutil.get_terminal_size().columns
-
-        styled_parts = []
-        current_length = 0
-        separator = app_settings.settings["toolbar_separator"]
-        sep_len = len(separator)
-        sep_style_str = "class:bottom-toolbar.separator"
-
-        for key in order:
-            if key not in component_map:
-                continue
-
-            is_enabled, style_class, text = component_map[key]
-            if not is_enabled or not text:
-                continue
-
-            part_len = len(text)
-            required_len = part_len + (sep_len if styled_parts else 0)
-
-            if current_length + required_len > width:
-                break
-
-            if styled_parts:
-                styled_parts.append((sep_style_str, separator))
-            styled_parts.append((style_class, text))
-            current_length += required_len
-
-        return styled_parts
+        return self._build_toolbar_from_components(component_map, order)
 
     def run(self) -> None:
         log_filename_base = (
