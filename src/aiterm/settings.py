@@ -1,6 +1,6 @@
 # aiterm/settings.py
 # aiterm: A command-line interface for interacting with AI models.
-# Copyright (C) 2025 Dank A. Saurus
+# Copyright (C) 2025-2026 Dank A. Saurus
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -42,10 +42,10 @@ def _get_default_settings() -> dict[str, Any]:
         "api_timeout": 60,
         "active_theme": "default",
         # --- Models ---
-        "default_gemini_model": "gemini-1.5-flash-latest",
+        "default_gemini_model": "gemini-flash-latest",
         "default_openai_chat_model": "gpt-4o-mini",
         "default_openai_image_model": "dall-e-3",
-        "helper_model_gemini": "gemini-1.5-flash-latest",
+        "helper_model_gemini": "gemini-flash-latest",
         "helper_model_openai": "gpt-4o-mini",
         # --- Behavior ---
         "stream": True,

@@ -1,6 +1,6 @@
 # src/aiterm/personas.py
 # aiterm: A command-line interface for interacting with AI models.
-# Copyright (C) 2025 Dank A. Saurus
+# Copyright (C) 2025-2026 Dank A. Saurus
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -65,7 +65,7 @@ def _get_default_persona_content() -> dict[str, Any]:
             "and use the rest of your vast dataset to assist with anything unrelated."
         ),
         "engine": "gemini",
-        "model": "gemini-1.5-flash-latest",
+        "model": "gemini-flash-latest",
         "attachments": ["../docs/assistant_docs.md"],
     }
 

@@ -1,6 +1,6 @@
 # aiterm/config.py
 # aiterm: A command-line interface for interacting with AI models.
-# Copyright (C) 2025 Dank A. Saurus
+# Copyright (C) 2025-2026 Dank A. Saurus
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -21,7 +21,7 @@ from pathlib import Path
 import platformdirs
 
 APP_NAME = "aiterm"
-APP_AUTHOR = "DankASaurus"  # Optional, but good practice for platformdirs
+APP_AUTHOR = "DankASaurus"
 
 # Base directory for user-specific configuration files.
 # Uses OS-native paths:
