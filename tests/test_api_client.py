@@ -32,6 +32,11 @@ def test_check_api_keys_gemini_success(monkeypatch):
     assert check_api_keys("gemini") == "test_key"
 
 
+def test_check_api_keys_anthropic_success(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test_key")
+    assert check_api_keys("anthropic") == "test_key"
+
+
 def test_check_api_keys_missing_openai(monkeypatch, mocker):
     # Mock load_dotenv to prevent it from reading a real .env file
     mocker.patch("aiterm.api_client.load_dotenv")
@@ -48,6 +53,14 @@ def test_check_api_keys_missing_gemini(monkeypatch, mocker):
     with pytest.raises(MissingApiKeyError) as excinfo:
         check_api_keys("gemini")
     assert "GEMINI_API_KEY" in str(excinfo.value)
+
+
+def test_check_api_keys_missing_anthropic(monkeypatch, mocker):
+    mocker.patch("aiterm.api_client.load_dotenv")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    with pytest.raises(MissingApiKeyError) as excinfo:
+        check_api_keys("anthropic")
+    assert "ANTHROPIC_API_KEY" in str(excinfo.value)
 
 
 def test_make_api_request_success(mocker, mock_settings):
@@ -206,6 +219,15 @@ def test_parse_token_counts_gemini(mock_gemini_chat_response):
     assert t == 40
 
 
+def test_parse_token_counts_anthropic(mock_anthropic_chat_response):
+    """Tests parsing token counts from an Anthropic response."""
+    p, c, r, t = api_client._parse_token_counts("anthropic", mock_anthropic_chat_response)
+    assert p == 12
+    assert c == 24
+    assert r == 0
+    assert t == 36
+
+
 def test_process_stream_openai(mock_streaming_response_factory):
     """Tests successful processing of an OpenAI stream."""
     openai_stream_chunks = [
@@ -237,6 +259,22 @@ def test_process_stream_gemini(mock_streaming_response_factory):
     )
     assert full_text == "This is a test."
     assert tokens == {"prompt": 8, "completion": 12, "reasoning": 2, "total": 22}
+
+
+def test_process_stream_anthropic(mock_streaming_response_factory):
+    """Tests successful processing of an Anthropic stream."""
+    anthropic_stream_chunks = [
+        'data: {"type": "message_start", "message": {"usage": {"input_tokens": 10}}}',
+        'data: {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "Hello "}}',
+        'data: {"type": "content_block_delta", "delta": {"type": "text_delta", "text": "Claude"}}',
+        'data: {"type": "message_delta", "usage": {"output_tokens": 5}}'
+    ]
+    mock_response = mock_streaming_response_factory(anthropic_stream_chunks)
+    full_text, tokens = api_client._process_stream(
+        "anthropic", mock_response, print_stream=False
+    )
+    assert full_text == "Hello Claude"
+    assert tokens == {"prompt": 10, "completion": 5, "reasoning": 0, "total": 15}
 
 
 def test_process_stream_malformed_json(mock_streaming_response_factory, capsys):

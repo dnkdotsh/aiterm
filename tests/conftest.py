@@ -12,7 +12,7 @@ import requests
 from aiterm import config  # Import config to access LOG_DIRECTORY
 from aiterm import settings as app_settings
 from aiterm.chat_ui import MultiChatUI, SingleChatUI
-from aiterm.engine import GeminiEngine, OpenAIEngine
+from aiterm.engine import AnthropicEngine, GeminiEngine, OpenAIEngine
 from aiterm.managers.multichat_manager import MultiChatSession
 from aiterm.managers.session_manager import SessionManager
 from aiterm.session_state import MultiChatSessionState, SessionState
@@ -24,6 +24,7 @@ MOCK_SETTINGS = {
     "default_gemini_model": "gemini-default",
     "default_openai_chat_model": "openai-default",
     "default_openai_image_model": "dall-e-default",
+    "default_anthropic_model": "claude-default",
     "default_max_tokens": 1000,
     "stream": True,
     "memory_enabled": True,
@@ -50,6 +51,12 @@ def mock_openai_engine():
 def mock_gemini_engine():
     """Provides a mock GeminiEngine instance."""
     return GeminiEngine(api_key="fake_gemini_key")
+
+
+@pytest.fixture
+def mock_anthropic_engine():
+    """Provides a mock AnthropicEngine instance."""
+    return AnthropicEngine(api_key="fake_anthropic_key")
 
 
 @pytest.fixture
@@ -210,6 +217,29 @@ def mock_gemini_chat_response():
             "candidatesTokenCount": 25,
             "totalTokenCount": 40,
             "cachedContentTokenCount": 5,
+        },
+    }
+
+
+@pytest.fixture
+def mock_anthropic_chat_response():
+    """A fixture providing a standard, non-streaming Anthropic API chat response."""
+    return {
+        "id": "msg_123",
+        "type": "message",
+        "role": "assistant",
+        "content": [
+            {
+                "type": "text",
+                "text": "This is a test response.",
+            }
+        ],
+        "model": "claude-3-5-sonnet-20241022",
+        "stop_reason": "end_turn",
+        "stop_sequence": None,
+        "usage": {
+            "input_tokens": 12,
+            "output_tokens": 24,
         },
     }
 

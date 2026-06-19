@@ -38,6 +38,25 @@ class TestMessageBuilder:
             ],
         }
 
+    def test_construct_user_message_anthropic_with_image(self):
+        """Tests building an Anthropic user message with text and an image."""
+        image_data = [{"mime_type": "image/jpeg", "data": "base64data"}]
+        msg = construct_user_message("anthropic", "Look at this", image_data)
+        assert msg == {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Look at this"},
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": "image/jpeg",
+                        "data": "base64data"
+                    }
+                },
+            ],
+        }
+
     def test_construct_user_message_gemini_text_only(self):
         """Tests building a Gemini user message with only text."""
         msg = construct_user_message("gemini", "Hello", [])
@@ -60,6 +79,11 @@ class TestMessageBuilder:
         msg = construct_assistant_message("openai", "I am a bot.")
         assert msg == {"role": "assistant", "content": "I am a bot."}
 
+    def test_construct_assistant_message_anthropic(self):
+        """Tests building an Anthropic assistant message."""
+        msg = construct_assistant_message("anthropic", "I am Claude.")
+        assert msg == {"role": "assistant", "content": "I am Claude."}
+
     def test_construct_assistant_message_gemini(self):
         """Tests building a Gemini assistant (model) message."""
         msg = construct_assistant_message("gemini", "I am a bot.")
@@ -68,7 +92,7 @@ class TestMessageBuilder:
     @pytest.mark.parametrize(
         "message, expected_text",
         [
-            # OpenAI formats
+            # OpenAI / Anthropic formats
             (
                 {"role": "assistant", "content": "Simple string content."},
                 "Simple string content.",

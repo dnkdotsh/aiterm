@@ -10,7 +10,7 @@ class TestRedaction:
     def test_redact_sensitive_info_deep(self):
         """
         Tests recursive redaction of API keys in URLs, headers, and payloads,
-        including nested structures.
+        including nested structures, validating multiple known API key patterns.
         """
         log_entry = {
             "timestamp": "2024-01-01T12:00:00",
@@ -19,11 +19,13 @@ class TestRedaction:
                 "headers": {
                     "Content-Type": "application/json",
                     "Authorization": "Bearer sk-proj-anothersecretkey1234567890",
+                    "x-api-key": "sk-ant-api03-yoursupersecretclaudeapi-key",
                 },
                 "payload": {
                     "data": "test",
                     "nested": {"api_key": "payload_secret"},
                     "tokens": [{"type": "auth", "token": "a_third_secret"}],
+                    "anthropic_leak": "Use my key: sk-ant-api03-abcdefg123456 here.",
                 },
             },
             "response": {
@@ -37,8 +39,14 @@ class TestRedaction:
         assert "AIzaSy" not in redacted["request"]["url"]
         assert redacted["request"]["headers"]["Authorization"] == "Bearer [REDACTED]"
         assert "sk-proj-" not in redacted["request"]["headers"]["Authorization"]
+        assert redacted["request"]["headers"]["x-api-key"] == "[REDACTED]"
+        assert "sk-ant-" not in redacted["request"]["headers"]["x-api-key"]
+
+        # Test payload redaction
         assert redacted["request"]["payload"]["nested"]["api_key"] == "[REDACTED]"
         assert redacted["request"]["payload"]["tokens"][0]["token"] == "[REDACTED]"
+        assert "[REDACTED_ANTHROPIC_KEY]" in redacted["request"]["payload"]["anthropic_leak"]
+        assert "sk-ant-" not in redacted["request"]["payload"]["anthropic_leak"]
 
         # Test response body redaction
         assert "[REDACTED_GEMINI_KEY]" in redacted["response"]["error"]
@@ -47,8 +55,10 @@ class TestRedaction:
         # Ensure original data is not mutated
         assert "AIzaSy_supersecretkey" in log_entry["request"]["url"]
         assert "sk-proj-" in log_entry["request"]["headers"]["Authorization"]
+        assert "sk-ant-api03-" in log_entry["request"]["headers"]["x-api-key"]
         assert "AIzaSy_supersecretkey" in log_entry["response"]["error"]
         assert log_entry["request"]["payload"]["nested"]["api_key"] == "payload_secret"
+        assert "sk-ant-" in log_entry["request"]["payload"]["anthropic_leak"]
 
     def test_redact_non_sensitive_info_is_untouched(self):
         """Tests that data structures without sensitive info are not changed."""
