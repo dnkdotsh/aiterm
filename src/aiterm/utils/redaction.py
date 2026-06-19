@@ -26,6 +26,7 @@ from typing import Any
 OPENAI_KEY_PATTERN = re.compile(r"sk-(proj-)?\w{20,}")
 GEMINI_KEY_PATTERN = re.compile(r"AIzaSy[A-Za-z0-9\-_]{20,}")
 ANTHROPIC_KEY_PATTERN = re.compile(r"sk-ant-[A-Za-z0-9\-_]+")
+GROQ_KEY_PATTERN = re.compile(r"gsk_[A-Za-z0-9]{20,}")
 
 # A set of dictionary keys whose values should always be redacted.
 SENSITIVE_KEYS = {"api_key", "key", "token", "authorization", "x-api-key"}
@@ -66,6 +67,7 @@ def redact_sensitive_info(data: Any) -> Any:
             sub_data = OPENAI_KEY_PATTERN.sub("[REDACTED_OPENAI_KEY]", sub_data)
             sub_data = GEMINI_KEY_PATTERN.sub("[REDACTED_GEMINI_KEY]", sub_data)
             sub_data = ANTHROPIC_KEY_PATTERN.sub("[REDACTED_ANTHROPIC_KEY]", sub_data)
+            sub_data = GROQ_KEY_PATTERN.sub("[REDACTED_GROQ_KEY]", sub_data)
             return sub_data
 
         return sub_data

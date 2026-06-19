@@ -26,7 +26,7 @@ import requests
 from dotenv import load_dotenv
 
 from . import config
-from .engine import AIEngine
+from .engine import AIEngine, PROVIDER_CONFIGS
 from .logger import log
 from .settings import settings
 from .utils.formatters import RESET_COLOR, SYSTEM_MSG
@@ -76,13 +76,15 @@ def check_api_keys(engine: str):
     """
     load_dotenv(dotenv_path=config.DOTENV_FILE)
 
-    key_map = {
-        "openai": "OPENAI_API_KEY",
-        "gemini": "GEMINI_API_KEY",
-        "anthropic": "ANTHROPIC_API_KEY",
-    }
+    if engine in PROVIDER_CONFIGS:
+        key_name = PROVIDER_CONFIGS[engine]["api_key_env"]
+    else:
+        key_map = {
+            "gemini": "GEMINI_API_KEY",
+            "anthropic": "ANTHROPIC_API_KEY",
+        }
+        key_name = key_map.get(engine)
 
-    key_name = key_map.get(engine)
     if not key_name:
         raise ValueError(f"Unknown engine provided to key checker: {engine}")
 
@@ -182,7 +184,7 @@ def _parse_token_counts(
     p, c, r, t = 0, 0, 0, 0
     if not response_data:
         return 0, 0, 0, 0
-    if engine_name == "openai":
+    if engine_name in ["openai", "groq"]:
         if "usage" in response_data:
             p = response_data["usage"].get("prompt_tokens", 0)
             c = response_data["usage"].get("completion_tokens", 0)
@@ -211,7 +213,7 @@ def _process_stream(
             if not chunk:
                 continue
             decoded_chunk = chunk.decode("utf-8")
-            if engine == "openai":
+            if engine in ["openai", "groq"]:
                 if decoded_chunk.startswith("data:"):
                     if "[DONE]" in decoded_chunk:
                         break

@@ -33,7 +33,7 @@ def get_default_model_for_engine(engine_name: str) -> str:
     """Returns the default chat model for a given engine from settings."""
     model_key = (
         f"default_{engine_name}_chat_model"
-        if engine_name == "openai"
+        if engine_name in ["openai", "groq"]
         else f"default_{engine_name}_model"
     )
     return settings.get(model_key, "")

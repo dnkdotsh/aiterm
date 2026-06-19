@@ -23,6 +23,22 @@ import requests
 from .logger import log
 from .settings import settings
 
+# Configuration block for OpenAI-compatible providers
+PROVIDER_CONFIGS = {
+    "openai": {
+        "id": "openai",
+        "base_url": "https://api.openai.com/v1",
+        "api_key_env": "OPENAI_API_KEY",
+        "headers": {},
+    },
+    "groq": {
+        "id": "groq",
+        "base_url": "https://api.groq.com/openai/v1",
+        "api_key_env": "GROQ_API_KEY",
+        "headers": {},
+    }
+}
+
 
 class AIEngine(abc.ABC):
     """Abstract base class for an AI engine provider."""
@@ -69,21 +85,28 @@ class AIEngine(abc.ABC):
         pass
 
 
-class OpenAIEngine(AIEngine):
-    """AI Engine implementation for OpenAI."""
+class OpenAICompatibleEngine(AIEngine):
+    """AI Engine implementation for OpenAI-compatible providers."""
+
+    def __init__(self, provider_id: str, api_key: str):
+        super().__init__(api_key)
+        self.provider_id = provider_id
+        self.config = PROVIDER_CONFIGS[provider_id]
 
     @property
     def name(self) -> str:
-        return "openai"
+        return self.provider_id
 
     def get_headers(self) -> dict[str, str]:
-        return {
+        headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
+        headers.update(self.config.get("headers", {}))
+        return headers
 
     def get_chat_url(self, model: str, stream: bool) -> str:
-        return "https://api.openai.com/v1/chat/completions"
+        return f"{self.config['base_url']}/chat/completions"
 
     def build_chat_payload(
         self,
@@ -103,14 +126,12 @@ class OpenAIEngine(AIEngine):
             payload["stream_options"] = {"include_usage": True}
 
         if max_tokens:
-            # Legacy models ('gpt-4' but not 'gpt-4o', 'gpt-3.5-turbo') use 'max_tokens'.
-            # Newer and future models default to 'max_completion_tokens' for better compatibility.
-            if model.startswith("gpt-3.5-turbo") or (
-                model.startswith("gpt-4") and not model.startswith("gpt-4o")
-            ):
-                payload["max_tokens"] = max_tokens
-            else:
+            # Newer OpenAI reasoning models use 'max_completion_tokens'.
+            # Standard chat models and Groq defaults to 'max_tokens'.
+            if model.startswith("o1") or model.startswith("o3"):
                 payload["max_completion_tokens"] = max_tokens
+            else:
+                payload["max_tokens"] = max_tokens
         return payload
 
     def parse_chat_response(self, response_data: dict[str, Any]) -> str:
@@ -125,7 +146,7 @@ class OpenAIEngine(AIEngine):
 
     def fetch_available_models(self, task: str) -> list[str]:
         try:
-            url = "https://api.openai.com/v1/models"
+            url = f"{self.config['base_url']}/models"
             response = requests.get(
                 url, headers=self.get_headers(), timeout=settings["api_timeout"]
             )
@@ -149,7 +170,7 @@ class OpenAIEngine(AIEngine):
                 ]
                 return sorted(image_models)
         except requests.exceptions.RequestException as e:
-            log.warning("Could not fetch OpenAI model list (%s).", e)
+            log.warning("Could not fetch %s model list (%s).", self.provider_id.capitalize(), e)
         return []
 
 
@@ -293,8 +314,8 @@ class AnthropicEngine(AIEngine):
 
 def get_engine(engine_name: str, api_key: str) -> AIEngine:
     """Factory function to get an engine instance by name."""
-    if engine_name == "openai":
-        return OpenAIEngine(api_key)
+    if engine_name in PROVIDER_CONFIGS:
+        return OpenAICompatibleEngine(engine_name, api_key)
     if engine_name == "gemini":
         return GeminiEngine(api_key)
     if engine_name == "anthropic":

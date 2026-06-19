@@ -118,7 +118,7 @@ def run_chat_command(args: argparse.Namespace) -> None:
         )
         print(f"  {config.DOTENV_FILE}", file=sys.stderr)
         print("\nExample .env content:", file=sys.stderr)
-        print("  OPENAI_API_KEY=sk-...\n  GEMINI_API_KEY=AIza...\n  ANTHROPIC_API_KEY=sk-ant...", file=sys.stderr)
+        print("  OPENAI_API_KEY=sk-...\n  GEMINI_API_KEY=AIza...\n  ANTHROPIC_API_KEY=sk-ant...\n  GROQ_API_KEY=gsk_...", file=sys.stderr)
         sys.exit(1)
 
 
@@ -136,7 +136,7 @@ def main() -> None:
     core_group.add_argument(
         "-e",
         "--engine",
-        choices=["openai", "gemini", "anthropic"],
+        choices=["openai", "gemini", "anthropic", "groq"],
         default=None,
         help=f"Specify the AI provider. (default: {settings['default_engine']})",
     )
@@ -253,7 +253,7 @@ def main() -> None:
     )
 
     parser = argparse.ArgumentParser(
-        description="Unified Command-Line AI Client for OpenAI and Gemini.",
+        description="Unified Command-Line AI Client for OpenAI, Gemini, Anthropic, and Groq.",
         formatter_class=CustomHelpFormatter,
     )
     subparsers = parser.add_subparsers(

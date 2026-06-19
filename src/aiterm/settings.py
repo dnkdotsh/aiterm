@@ -44,10 +44,12 @@ def _get_default_settings() -> dict[str, Any]:
         # --- Models ---
         "default_gemini_model": "gemini-flash-latest",
         "default_openai_chat_model": "gpt-4o-mini",
+        "default_groq_chat_model": "llama-3.3-70b-versatile",
         "default_openai_image_model": "dall-e-3",
         "default_anthropic_model": "claude-sonnet-4-6",
         "helper_model_gemini": "gemini-flash-lite-latest",
         "helper_model_openai": "gpt-4o-mini",
+        "helper_model_groq": "llama-3.1-8b-instant",
         "helper_model_anthropic": "claude-haiku-4-5",
         # --- Behavior ---
         "stream": True,

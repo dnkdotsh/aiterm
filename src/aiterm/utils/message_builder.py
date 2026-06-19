@@ -74,10 +74,10 @@ def construct_user_message(
 ) -> dict[str, Any]:
     """Constructs a user message in the format expected by the specified engine."""
     content: list[dict[str, Any]] = []
-    if engine_name in ["openai", "anthropic"]:
+    if engine_name in ["openai", "anthropic", "groq"]:
         content.append({"type": "text", "text": text})
         for img in image_data:
-            if engine_name == "openai":
+            if engine_name in ["openai", "groq"]:
                 content.append(
                     {
                         "type": "image_url",
@@ -109,7 +109,7 @@ def construct_user_message(
 
 def construct_assistant_message(engine_name: str, text: str) -> dict[str, Any]:
     """Constructs an assistant message in the format expected by the specified engine."""
-    if engine_name in ["openai", "anthropic"]:
+    if engine_name in ["openai", "anthropic", "groq"]:
         return {"role": "assistant", "content": text}
     return {"role": "model", "parts": [{"text": text}]}
 

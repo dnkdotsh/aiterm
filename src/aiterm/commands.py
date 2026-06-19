@@ -196,7 +196,7 @@ def handle_model(args: list[str], session: SessionManager) -> None:
 
 
 def handle_engine(args: list[str], session: SessionManager) -> None:
-    engines = ["openai", "gemini", "anthropic"]
+    engines = ["openai", "gemini", "anthropic", "groq"]
 
     if args:
         new_engine_name = args[0]
