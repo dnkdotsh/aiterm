@@ -1,6 +1,6 @@
 # aiterm/utils/config_loader.py
 # aiterm: A command-line interface for interacting with AI models.
-# Copyright (C) 2025 Dank A. Saurus
+# Copyright (C) 2025-2026 Dank A. Saurus
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -65,12 +65,8 @@ def resolve_config_precedence(args: "argparse.Namespace") -> dict[str, Any]:
     # 2. Determine Model (depends on final engine)
     if args.model is not None:
         model_to_use = args.model
-    elif (
-        persona
-        and persona.model
-        and (persona.engine is None or persona.engine == engine_to_use)
-    ):
-        model_to_use = persona.model
+    elif persona and engine_to_use in persona.models:
+        model_to_use = persona.models[engine_to_use]
     else:
         model_to_use = get_default_model_for_engine(engine_to_use)
 

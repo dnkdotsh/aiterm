@@ -41,7 +41,7 @@ class Persona:
     description: str = ""
     system_prompt: str = ""
     engine: str | None = None
-    model: str | None = None
+    models: dict[str, str] = field(default_factory=dict)
     max_tokens: int | None = None
     stream: bool | None = None
     attachments: list[str] = field(default_factory=list)
@@ -65,7 +65,10 @@ def _get_default_persona_content() -> dict[str, Any]:
             "and use the rest of your vast dataset to assist with anything unrelated."
         ),
         "engine": "gemini",
-        "model": "gemini-flash-latest",
+        "models": {
+            "gemini": "gemini-2.5-flash",
+            "openai": "gpt-4o-mini"
+        },
         "attachments": ["../docs/assistant_docs.md"],
     }
 
@@ -137,7 +140,7 @@ def load_persona(name: str) -> Persona | None:
             description=data.get("description", ""),
             system_prompt=data.get("system_prompt"),
             engine=data.get("engine"),
-            model=data.get("model"),
+            models=data.get("models", {}),
             max_tokens=data.get("max_tokens"),
             stream=data.get("stream"),
             attachments=[str(p) for p in resolved_attachments],  # Store as strings

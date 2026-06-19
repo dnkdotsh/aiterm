@@ -61,7 +61,7 @@ class TestConfigLoader:
             name="Coder",
             filename="coder.json",
             engine="openai",
-            model="gpt-4-turbo",
+            models={"openai": "gpt-4-turbo"},
             max_tokens=2048,
             stream=False,
         )
@@ -90,7 +90,7 @@ class TestConfigLoader:
             name="Coder",
             filename="coder.json",
             engine="openai",
-            model="gpt-4-turbo",
+            models={"openai": "gpt-4-turbo"},
             max_tokens=2048,
             stream=False,
         )
@@ -149,7 +149,7 @@ class TestConfigLoader:
             name="Coder",
             filename="coder.json",
             engine="openai",  # Persona is for openai
-            model="gpt-4-turbo",
+            models={"openai": "gpt-4-turbo"}, # Model only exists for OpenAI
         )
         mock_persona_loader.return_value = persona
 
@@ -157,6 +157,7 @@ class TestConfigLoader:
 
         assert result["engine_name"] == "gemini"
         # The model should fall back to the default for the CLI-specified engine
+        # because the persona did not have a valid "gemini" model in its dict
         assert result["model"] == "gemini-default"
 
     def test_resolve_config_precedence_persona_not_found(

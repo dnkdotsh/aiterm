@@ -1,7 +1,8 @@
+# src/aiterm/commands.py
 #!/usr/bin/env python3
 # aiterm/commands.py
 # aiterm: A command-line interface for interacting with AI models.
-# Copyright (C) 2025 Dank A. Saurus
+# Copyright (C) 2025-2026 Dank A. Saurus
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -637,8 +638,13 @@ def handle_persona(args: list[str], session: SessionManager) -> None:
                 )
                 handle_engine([new_persona.engine], session)
 
-            if new_persona.model:
-                session.state.model = new_persona.model
+            # Resolve model by current engine
+            target_engine = session.state.engine.name
+            if target_engine in new_persona.models:
+                session.state.model = new_persona.models[target_engine]
+            else:
+                session.state.model = get_default_model_for_engine(target_engine)
+
             if new_persona.max_tokens is not None:
                 session.state.max_tokens = new_persona.max_tokens
             if new_persona.stream is not None:
@@ -1049,12 +1055,14 @@ def handle_multichat_persona(
 
         if target_engine == "openai":
             session.state.openai_persona = new_persona
-            if new_persona.model:
-                session.state.openai_model = new_persona.model
+            new_model = new_persona.models.get("openai", get_default_model_for_engine("openai"))
+            session.state.openai_model = new_model
+            session.models["openai"] = new_model
         else:  # gemini
             session.state.gemini_persona = new_persona
-            if new_persona.model:
-                session.state.gemini_model = new_persona.model
+            new_model = new_persona.models.get("gemini", get_default_model_for_engine("gemini"))
+            session.state.gemini_model = new_model
+            session.models["gemini"] = new_model
 
         # Add new attachments
         if new_persona.attachments:

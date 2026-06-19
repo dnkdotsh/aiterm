@@ -110,6 +110,21 @@ class TestPersonas:
         assert persona.attachments == []  # Should default to empty list
         assert "Attachments in bad_attachments.json must be a list" in caplog.text
 
+    def test_load_persona_with_models_dict(self, fake_fs):
+        """Tests loading a persona with the new per-engine models dictionary."""
+        persona_path = config.PERSONAS_DIRECTORY / "models_test.json"
+        content = {
+            "name": "Models Test",
+            "system_prompt": "test",
+            "models": {"openai": "gpt-4", "gemini": "gemini-pro"}
+        }
+        persona_path.write_text(json.dumps(content))
+        persona = personas.load_persona("models_test")
+
+        assert persona is not None
+        assert persona.models["openai"] == "gpt-4"
+        assert persona.models["gemini"] == "gemini-pro"
+
     def test_list_personas_no_dir(self, fake_fs):
         """Tests listing personas when the directory doesn't exist."""
         # The fake_fs fixture creates the directory by default, so we remove it for this test.

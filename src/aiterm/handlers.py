@@ -2,7 +2,7 @@
 #!/usr/bin/env python3
 # aiterm/handlers.py
 # aiterm: A command-line interface for interacting with AI models.
-# Copyright (C) 2025 Dank A. Saurus
+# Copyright (C) 2025-2026 Dank A. Saurus
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -211,13 +211,18 @@ def handle_multichat_session(
         if persona_gem and str(p) in persona_gem.attachments
     )
 
-    # Determine models, respecting persona overrides
-    openai_model = (
-        persona_gpt.model if persona_gpt and persona_gpt.model else args.model
-    ) or settings["default_openai_chat_model"]
-    gemini_model = (
-        persona_gem.model if persona_gem and persona_gem.model else args.model
-    ) or settings["default_gemini_model"]
+    # Determine models, respecting persona overrides (by engine slot)
+    openai_model = args.model
+    if not openai_model:
+        openai_model = (
+            persona_gpt.models.get("openai") if persona_gpt else None
+        ) or settings["default_openai_chat_model"]
+
+    gemini_model = args.model
+    if not gemini_model:
+        gemini_model = (
+            persona_gem.models.get("gemini") if persona_gem else None
+        ) or settings["default_gemini_model"]
 
     initial_state = MultiChatSessionState(
         openai_engine=openai_engine,

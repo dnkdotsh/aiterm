@@ -346,8 +346,14 @@ class TestCommands:
 
     def test_handle_persona_apply(self, mocker, mock_openai_session_manager):
         """Tests applying a new persona with attachments and settings."""
-        # Mock `handle_engine` as its test is separate
-        mocker.patch("aiterm.commands.handle_engine")
+        # Mock `handle_engine` to simulate the engine switch
+        def fake_handle_engine(args, session):
+            mock_engine = MagicMock()
+            mock_engine.name = args[0]
+            session.state.engine = mock_engine
+
+        mock_handle_engine = mocker.patch("aiterm.commands.handle_engine", side_effect=fake_handle_engine)
+
         # Mock the context manager used inside the handler to simulate finding attachments
         mock_temp_context = MagicMock()
         mock_temp_context.attachments = {
@@ -355,12 +361,12 @@ class TestCommands:
         }
         mocker.patch("aiterm.commands.ContextManager", return_value=mock_temp_context)
 
-        # Mock the persona that will be loaded
+        # Mock the persona that will be loaded (now using models dict)
         new_persona = Persona(
             name="NewGuy",
             filename="newguy.json",
             engine="gemini",
-            model="gemini-pro",
+            models={"gemini": "gemini-pro"},
             attachments=["/path/to/doc.md"],
             system_prompt="You are NewGuy.",
         )
@@ -390,7 +396,7 @@ class TestCommands:
             Path("/path/to/doc.md")
         }
         # 5. Assert persona settings are applied
-        commands.handle_engine.assert_called_with(
+        mock_handle_engine.assert_called_with(
             ["gemini"], mock_openai_session_manager
         )
         assert mock_openai_session_manager.state.model == "gemini-pro"
