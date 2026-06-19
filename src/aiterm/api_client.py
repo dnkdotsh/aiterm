@@ -1,6 +1,6 @@
 # aiterm/api_client.py
 # aiterm: A command-line interface for interacting with AI models.
-# Copyright (C) 2025 Dank A. Saurus
+# Copyright (C) 2025-2026 Dank A. Saurus
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -75,7 +75,17 @@ def check_api_keys(engine: str):
     file if necessary, and returns the key.
     """
     load_dotenv(dotenv_path=config.DOTENV_FILE)
-    key_name = "OPENAI_API_KEY" if engine == "openai" else "GEMINI_API_KEY"
+
+    key_map = {
+        "openai": "OPENAI_API_KEY",
+        "gemini": "GEMINI_API_KEY",
+        "anthropic": "ANTHROPIC_API_KEY",
+    }
+
+    key_name = key_map.get(engine)
+    if not key_name:
+        raise ValueError(f"Unknown engine provided to key checker: {engine}")
+
     api_key = os.getenv(key_name)
     if not api_key:
         raise MissingApiKeyError(
@@ -183,6 +193,11 @@ def _parse_token_counts(
         c = usage.get("candidatesTokenCount", 0)
         r = usage.get("cachedContentTokenCount", 0)
         t = usage.get("totalTokenCount", 0)
+    elif engine_name == "anthropic":
+        usage = response_data.get("usage", {})
+        p = usage.get("input_tokens", 0)
+        c = usage.get("output_tokens", 0)
+        t = p + c
     return p, c, r, t
 
 
@@ -239,6 +254,29 @@ def _process_stream(
                         t = data["usageMetadata"].get("totalTokenCount", 0)
                 except (json.JSONDecodeError, IndexError):
                     continue
+            elif engine == "anthropic":
+                if decoded_chunk.startswith("data:"):
+                    data_str = decoded_chunk.split("data: ", 1)[1].strip()
+                    if not data_str:
+                        continue
+                    try:
+                        data = json.loads(data_str)
+                        event_type = data.get("type")
+                        if event_type == "message_start":
+                            p = data.get("message", {}).get("usage", {}).get("input_tokens", 0)
+                        elif event_type == "content_block_delta":
+                            delta = data.get("delta", {})
+                            if delta.get("type") == "text_delta":
+                                text_chunk = delta.get("text", "")
+                                if print_stream:
+                                    sys.stdout.write(text_chunk)
+                                    sys.stdout.flush()
+                                full_response += text_chunk
+                        elif event_type == "message_delta":
+                            c = data.get("usage", {}).get("output_tokens", 0)
+                            t = p + c
+                    except json.JSONDecodeError:
+                        continue
     except KeyboardInterrupt:
         if print_stream:
             # A newline is needed to move the cursor to the next line after the partial response.
@@ -269,11 +307,7 @@ def perform_chat_request(
     payload = engine.build_chat_payload(
         messages_or_contents, system_prompt, max_tokens, stream, model
     )
-    headers = (
-        {"Authorization": f"Bearer {engine.api_key}"}
-        if engine.name == "openai"
-        else {"Content-Type": "application/json"}
-    )
+    headers = engine.get_headers()
 
     try:
         response_obj = make_api_request(

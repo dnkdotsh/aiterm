@@ -196,14 +196,19 @@ def handle_model(args: list[str], session: SessionManager) -> None:
 
 
 def handle_engine(args: list[str], session: SessionManager) -> None:
-    new_engine_name = args[0] if args else None
-    if not new_engine_name:
-        new_engine_name = (
-            "gemini" if session.state.engine.name == "openai" else "openai"
-        )
-    if new_engine_name not in ["openai", "gemini"]:
-        print(f"{SYSTEM_MSG}--> Unknown engine: {new_engine_name}.{RESET_COLOR}")
+    engines = ["openai", "gemini", "anthropic"]
+
+    if args:
+        new_engine_name = args[0]
+    else:
+        current_name = session.state.engine.name
+        current_idx = engines.index(current_name) if current_name in engines else 0
+        new_engine_name = engines[(current_idx + 1) % len(engines)]
+
+    if new_engine_name not in engines:
+        print(f"{SYSTEM_MSG}--> Unknown engine: {new_engine_name}. Valid options: {', '.join(engines)}.{RESET_COLOR}")
         return
+
     try:
         api_key = api_client.check_api_keys(new_engine_name)
         session.state.history = translate_history(

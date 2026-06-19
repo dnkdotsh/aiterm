@@ -1,6 +1,6 @@
 # aiterm/utils/redaction.py
 # aiterm: A command-line interface for interacting with AI models.
-# Copyright (C) 2025 Dank A. Saurus
+# Copyright (C) 2025-2026 Dank A. Saurus
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -25,9 +25,10 @@ from typing import Any
 # Regex for known API key patterns.
 OPENAI_KEY_PATTERN = re.compile(r"sk-(proj-)?\w{20,}")
 GEMINI_KEY_PATTERN = re.compile(r"AIzaSy[A-Za-z0-9\-_]{20,}")
+ANTHROPIC_KEY_PATTERN = re.compile(r"sk-ant-[A-Za-z0-9\-_]+")
 
 # A set of dictionary keys whose values should always be redacted.
-SENSITIVE_KEYS = {"api_key", "key", "token", "authorization"}
+SENSITIVE_KEYS = {"api_key", "key", "token", "authorization", "x-api-key"}
 
 
 def redact_sensitive_info(data: Any) -> Any:
@@ -64,6 +65,7 @@ def redact_sensitive_info(data: Any) -> Any:
             sub_data = re.sub(r"key=([^&]+)", "key=[REDACTED]", sub_data)
             sub_data = OPENAI_KEY_PATTERN.sub("[REDACTED_OPENAI_KEY]", sub_data)
             sub_data = GEMINI_KEY_PATTERN.sub("[REDACTED_GEMINI_KEY]", sub_data)
+            sub_data = ANTHROPIC_KEY_PATTERN.sub("[REDACTED_ANTHROPIC_KEY]", sub_data)
             return sub_data
 
         return sub_data

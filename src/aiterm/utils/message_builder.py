@@ -1,6 +1,6 @@
 # aiterm/utils/message_builder.py
 # aiterm: A command-line interface for interacting with AI models.
-# Copyright (C) 2025 Dank A. Saurus
+# Copyright (C) 2025-2026 Dank A. Saurus
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -74,17 +74,29 @@ def construct_user_message(
 ) -> dict[str, Any]:
     """Constructs a user message in the format expected by the specified engine."""
     content: list[dict[str, Any]] = []
-    if engine_name == "openai":
+    if engine_name in ["openai", "anthropic"]:
         content.append({"type": "text", "text": text})
         for img in image_data:
-            content.append(
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:{img['mime_type']};base64,{img['data']}"
-                    },
-                }
-            )
+            if engine_name == "openai":
+                content.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{img['mime_type']};base64,{img['data']}"
+                        },
+                    }
+                )
+            else:  # anthropic
+                content.append(
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": img["mime_type"],
+                            "data": img["data"]
+                        }
+                    }
+                )
         return {"role": "user", "content": content}
     else:  # Gemini
         content.append({"text": text})
@@ -97,7 +109,7 @@ def construct_user_message(
 
 def construct_assistant_message(engine_name: str, text: str) -> dict[str, Any]:
     """Constructs an assistant message in the format expected by the specified engine."""
-    if engine_name == "openai":
+    if engine_name in ["openai", "anthropic"]:
         return {"role": "assistant", "content": text}
     return {"role": "model", "parts": [{"text": text}]}
 

@@ -45,8 +45,10 @@ def _get_default_settings() -> dict[str, Any]:
         "default_gemini_model": "gemini-flash-latest",
         "default_openai_chat_model": "gpt-4o-mini",
         "default_openai_image_model": "dall-e-3",
+        "default_anthropic_model": "claude-sonnet-4-6",
         "helper_model_gemini": "gemini-flash-lite-latest",
         "helper_model_openai": "gpt-4o-mini",
+        "helper_model_anthropic": "claude-haiku-4-5",
         # --- Behavior ---
         "stream": True,
         "memory_enabled": True,

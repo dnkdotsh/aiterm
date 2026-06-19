@@ -1,6 +1,6 @@
 # aiterm/engine.py
 # aiterm: A command-line interface for interacting with AI models.
-# Copyright (C) 2025 Dank A. Saurus
+# Copyright (C) 2025-2026 Dank A. Saurus
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -37,6 +37,11 @@ class AIEngine(abc.ABC):
         pass
 
     @abc.abstractmethod
+    def get_headers(self) -> dict[str, str]:
+        """Get the HTTP headers required for requests to this engine."""
+        pass
+
+    @abc.abstractmethod
     def get_chat_url(self, model: str, stream: bool) -> str:
         """Get the API endpoint URL for chat completions."""
         pass
@@ -70,6 +75,12 @@ class OpenAIEngine(AIEngine):
     @property
     def name(self) -> str:
         return "openai"
+
+    def get_headers(self) -> dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
 
     def get_chat_url(self, model: str, stream: bool) -> str:
         return "https://api.openai.com/v1/chat/completions"
@@ -115,16 +126,20 @@ class OpenAIEngine(AIEngine):
     def fetch_available_models(self, task: str) -> list[str]:
         try:
             url = "https://api.openai.com/v1/models"
-            headers = {"Authorization": f"Bearer {self.api_key}"}
             response = requests.get(
-                url, headers=headers, timeout=settings["api_timeout"]
+                url, headers=self.get_headers(), timeout=settings["api_timeout"]
             )
             response.raise_for_status()
             model_list = response.json().get("data", [])
             model_ids = [m["id"] for m in model_list]
 
             if task == "chat":
-                chat_models = [mid for mid in model_ids if mid.startswith("gpt")]
+                # Use a blacklist to ensure o1, o3, and future architectures are included.
+                excluded_prefixes = (
+                    "dall-e", "tts", "whisper", "text-embedding", "embedding",
+                    "babbage", "davinci", "omni-moderation", "text-search", "code-search"
+                )
+                chat_models = [mid for mid in model_ids if not mid.startswith(excluded_prefixes)]
                 return sorted(chat_models)
             elif task == "image":
                 image_models = [
@@ -144,6 +159,9 @@ class GeminiEngine(AIEngine):
     @property
     def name(self) -> str:
         return "gemini"
+
+    def get_headers(self) -> dict[str, str]:
+        return {"Content-Type": "application/json"}
 
     def get_chat_url(self, model: str, stream: bool) -> str:
         if stream:
@@ -213,10 +231,72 @@ class GeminiEngine(AIEngine):
         return []
 
 
+class AnthropicEngine(AIEngine):
+    """AI Engine implementation for Anthropic Claude."""
+
+    @property
+    def name(self) -> str:
+        return "anthropic"
+
+    def get_headers(self) -> dict[str, str]:
+        return {
+            "x-api-key": self.api_key,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        }
+
+    def get_chat_url(self, model: str, stream: bool) -> str:
+        return "https://api.anthropic.com/v1/messages"
+
+    def build_chat_payload(
+        self,
+        messages: list[dict[str, Any]],
+        system_prompt: str | None,
+        max_tokens: int | None,
+        stream: bool,
+        model: str,
+    ) -> dict[str, Any]:
+        payload = {
+            "model": model,
+            "messages": messages,
+            "stream": stream,
+            # Anthropic strictly requires a max_tokens parameter
+            "max_tokens": max_tokens or 4096,
+        }
+        if system_prompt:
+            payload["system"] = system_prompt
+        return payload
+
+    def parse_chat_response(self, response_data: dict[str, Any]) -> str:
+        content_blocks = response_data.get("content", [])
+        for block in content_blocks:
+            if block.get("type") == "text":
+                return block.get("text", "")
+        return ""
+
+    def fetch_available_models(self, task: str) -> list[str]:
+        # Anthropic doesn't have an endpoint for image generation models
+        if task != "chat":
+            return []
+        try:
+            url = "https://api.anthropic.com/v1/models"
+            response = requests.get(
+                url, headers=self.get_headers(), timeout=settings["api_timeout"]
+            )
+            response.raise_for_status()
+            model_list = response.json().get("data", [])
+            return sorted([m["id"] for m in model_list if "id" in m])
+        except requests.exceptions.RequestException as e:
+            log.warning("Could not fetch Anthropic model list (%s).", e)
+        return []
+
+
 def get_engine(engine_name: str, api_key: str) -> AIEngine:
     """Factory function to get an engine instance by name."""
     if engine_name == "openai":
         return OpenAIEngine(api_key)
     if engine_name == "gemini":
         return GeminiEngine(api_key)
+    if engine_name == "anthropic":
+        return AnthropicEngine(api_key)
     raise ValueError(f"Unknown engine: {engine_name}")

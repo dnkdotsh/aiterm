@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # aiterm: A command-line interface for interacting with AI models.
-# Copyright (C) 2025 Dank A. Saurus
+# Copyright (C) 2025-2026 Dank A. Saurus
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -118,7 +118,7 @@ def run_chat_command(args: argparse.Namespace) -> None:
         )
         print(f"  {config.DOTENV_FILE}", file=sys.stderr)
         print("\nExample .env content:", file=sys.stderr)
-        print("  OPENAI_API_KEY=sk-...\n  GEMINI_API_KEY=AIza...", file=sys.stderr)
+        print("  OPENAI_API_KEY=sk-...\n  GEMINI_API_KEY=AIza...\n  ANTHROPIC_API_KEY=sk-ant...", file=sys.stderr)
         sys.exit(1)
 
 
@@ -136,7 +136,7 @@ def main() -> None:
     core_group.add_argument(
         "-e",
         "--engine",
-        choices=["openai", "gemini"],
+        choices=["openai", "gemini", "anthropic"],
         default=None,
         help=f"Specify the AI provider. (default: {settings['default_engine']})",
     )
