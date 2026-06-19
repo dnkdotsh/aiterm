@@ -393,7 +393,7 @@ def _save_session_to_file(session: SessionManager, filename: str) -> bool:
             temp_file_path = f.name
             json.dump(state_dict, f, indent=2)
 
-        os.rename(temp_file_path, filepath)
+        os.replace(temp_file_path, filepath)
         print(f"{SYSTEM_MSG}--> Session saved to: {filepath}{RESET_COLOR}")
         return True
     except (OSError, TypeError) as e:
@@ -735,7 +735,7 @@ def _save_multichat_session_to_file(session: MultiChatSession, filename: str) ->
             temp_file_path = f.name
             json.dump(state_dict, f, indent=2)
 
-        os.rename(temp_file_path, filepath)
+        os.replace(temp_file_path, filepath)
         print(f"{SYSTEM_MSG}--> Multi-chat session saved to: {filepath}{RESET_COLOR}")
         return True
     except (OSError, TypeError) as e:

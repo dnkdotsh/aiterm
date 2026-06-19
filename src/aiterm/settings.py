@@ -132,8 +132,8 @@ def save_setting(key: str, value: str) -> tuple[bool, str]:
             temp_file_path = f.name
             json.dump(user_settings_to_save, f, indent=2)
 
-        # The rename operation is atomic on POSIX systems
-        os.rename(temp_file_path, config.SETTINGS_FILE)
+        # The replace operation is atomic and works cross-platform (overwrites if exists)
+        os.replace(temp_file_path, config.SETTINGS_FILE)
 
         settings[key] = converted_value
         return True, f"Setting '{key}' updated to '{converted_value}'."
