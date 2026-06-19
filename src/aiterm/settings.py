@@ -39,7 +39,7 @@ def _get_default_settings() -> dict[str, Any]:
     return {
         # --- General ---
         "default_engine": "gemini",
-        "api_timeout": 60,
+        "api_timeout": 120,
         "active_theme": "default",
         # --- Models ---
         "default_gemini_model": "gemini-flash-latest",
