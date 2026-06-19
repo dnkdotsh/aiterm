@@ -53,7 +53,7 @@ def translate_history(
                     # Message is from the OTHER AI. Assign it the 'user' role
                     # and prepend a label to clarify the source for the target AI.
                     # This prevents the AI from thinking it said what the other AI said.
-                    other_engine_name = source_engine.capitalize()
+                    other_engine_name = "OpenAI" if source_engine == "openai" else source_engine.capitalize()
                     labeled_content = (
                         f"[{other_engine_name}'s Response]: {text_content}"
                     )

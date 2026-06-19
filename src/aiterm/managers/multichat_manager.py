@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # aiterm/managers/multichat_manager.py
 # aiterm: A command-line interface for interacting with AI models.
-# Copyright (C) 2025 Dank A. Saurus
+# Copyright (C) 2025-2026 Dank A. Saurus
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -151,9 +151,7 @@ class MultiChatSession:
                 return
             target_engine_name = self.engine_aliases[parts[1].lower()]
             target_prompt = parts[2] if len(parts) > 2 else CONTINUATION_PROMPT
-            user_msg_text = (
-                f"Director to {target_engine_name.capitalize()}: {target_prompt}"
-            )
+            user_msg_text = f"Director to {'OpenAI' if target_engine_name == 'openai' else target_engine_name.capitalize()}: {target_prompt}"
             print(f"\n{SYSTEM_MSG}{user_msg_text}{RESET_COLOR}")
             user_msg = construct_user_message(
                 "openai",  # Base format, will be translated
@@ -167,11 +165,7 @@ class MultiChatSession:
                 self.engines[target_engine_name],
                 self.models[target_engine_name],
             )
-            print(
-                f"\n{ASSISTANT_PROMPT}[{engine.name.capitalize()}]: {RESET_COLOR}",
-                end="",
-                flush=True,
-            )
+            print(f"\n{ASSISTANT_PROMPT}[{'OpenAI' if engine.name == 'openai' else engine.name.capitalize()}]: {RESET_COLOR}", end="", flush=True)
             raw_response, tokens = api_client.perform_chat_request(
                 engine,
                 model,
@@ -226,11 +220,7 @@ class MultiChatSession:
             )
             thread.start()
 
-            print(
-                f"\n{ASSISTANT_PROMPT}[{primary_engine.name.capitalize()}]: {RESET_COLOR}",
-                end="",
-                flush=True,
-            )
+            print(f"\n{ASSISTANT_PROMPT}[{'OpenAI' if primary_engine.name == 'openai' else primary_engine.name.capitalize()}]: {RESET_COLOR}", end="", flush=True)
             primary_raw, primary_tokens = api_client.perform_chat_request(
                 primary_engine,
                 self.models[primary_engine.name],
@@ -243,9 +233,7 @@ class MultiChatSession:
             print("\n")
             thread.join()
             secondary_result = result_queue.get()
-            print(
-                f"{ASSISTANT_PROMPT}[{secondary_result['engine_name'].capitalize()}]: {RESET_COLOR}{secondary_result['text']}"
-            )
+            print(f"{ASSISTANT_PROMPT}[{'OpenAI' if secondary_result['engine_name'] == 'openai' else secondary_result['engine_name'].capitalize()}]: {RESET_COLOR}{secondary_result['text']}")
             secondary_tokens = secondary_result.get("tokens", {})
 
             # Aggregate token counts

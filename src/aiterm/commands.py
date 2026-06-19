@@ -217,7 +217,7 @@ def handle_engine(args: list[str], session: SessionManager) -> None:
         session.state.engine = get_engine(new_engine_name, api_key)
         session.state.model = get_default_model_for_engine(new_engine_name)
         print(
-            f"{SYSTEM_MSG}--> Engine switched to {session.state.engine.name.capitalize()}. Model set to {session.state.model}.{RESET_COLOR}"
+            f"{SYSTEM_MSG}--> Engine switched to {'OpenAI' if session.state.engine.name == 'openai' else session.state.engine.name.capitalize()}. Model set to {session.state.model}.{RESET_COLOR}"
         )
     except api_client.MissingApiKeyError as e:
         print(f"{SYSTEM_MSG}--> Switch failed: {e}{RESET_COLOR}")

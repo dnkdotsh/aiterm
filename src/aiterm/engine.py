@@ -170,7 +170,7 @@ class OpenAICompatibleEngine(AIEngine):
                 ]
                 return sorted(image_models)
         except requests.exceptions.RequestException as e:
-            log.warning("Could not fetch %s model list (%s).", self.provider_id.capitalize(), e)
+            log.warning("Could not fetch %s model list (%s).", "OpenAI" if self.provider_id == "openai" else self.provider_id.capitalize(), e)
         return []
 
 

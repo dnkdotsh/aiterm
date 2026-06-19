@@ -322,7 +322,7 @@ class MultiChatUI(BaseChatUI):
         )
         log_filepath = config.CHATLOG_DIRECTORY / f"{log_filename_base}.jsonl"
         print(
-            f"Starting interactive multi-chat. Primary: {self.session.primary_engine_name.capitalize()}. Log: {log_filepath.name}"
+            f"Starting interactive multi-chat. Primary: {'OpenAI' if self.session.primary_engine_name == 'openai' else self.session.primary_engine_name.capitalize()}. Log: {log_filepath.name}"
         )
         print("Type /help for commands or '/exit to end.")
 
