@@ -39,6 +39,16 @@ PROVIDER_CONFIGS = {
     }
 }
 
+# Substrings identifying Groq models that emit reasoning and accept the
+# 'reasoning_format' parameter. Non-reasoning models (llama, gemma, kimi)
+# reject that parameter with an HTTP 400.
+GROQ_REASONING_MARKERS = ("qwen", "gpt-oss", "deepseek", "qwq")
+
+
+def _is_groq_reasoning_model(model: str) -> bool:
+    """True if the given Groq model accepts the reasoning_format parameter."""
+    return any(marker in model.lower() for marker in GROQ_REASONING_MARKERS)
+
 
 class AIEngine(abc.ABC):
     """Abstract base class for an AI engine provider."""
@@ -124,6 +134,12 @@ class OpenAICompatibleEngine(AIEngine):
 
         if stream:
             payload["stream_options"] = {"include_usage": True}
+
+        # Groq reasoning models emit chain-of-thought. 'parsed' routes it to a
+        # separate field. Only reasoning-capable models accept this parameter;
+        # standard models (llama, gemma) return a 400 if it is present.
+        if self.provider_id == "groq" and _is_groq_reasoning_model(model):
+            payload["reasoning_format"] = "parsed"
 
         if max_tokens:
             # Newer OpenAI reasoning models use 'max_completion_tokens'.

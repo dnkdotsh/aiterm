@@ -19,6 +19,7 @@ import datetime
 import json
 import logging
 import os
+import re
 import sys
 from logging.handlers import RotatingFileHandler
 
@@ -26,11 +27,14 @@ import requests
 from dotenv import load_dotenv
 
 from . import config
-from .engine import AIEngine, PROVIDER_CONFIGS
+from .engine import AIEngine, PROVIDER_CONFIGS, _is_groq_reasoning_model
 from .logger import log
 from .settings import settings
 from .utils.formatters import RESET_COLOR, SYSTEM_MSG
 from .utils.redaction import redact_sensitive_info
+
+# Dim grey, used to render reasoning/chain-of-thought during the /debug reveal.
+REASONING_COLOR = "\033[90m"
 
 
 class MissingApiKeyError(Exception):
@@ -177,6 +181,64 @@ def make_api_request(
             raw_api_logger.info(json.dumps(safe_log_entry))
 
 
+# --- Reasoning / <think>-block handling -------------------------------------
+
+_THINK_OPEN = "<think>"
+_THINK_CLOSE = "</think>"
+_THINK_TAGS = (_THINK_OPEN, _THINK_CLOSE)
+
+
+def _split_safe(text: str) -> tuple[str, str]:
+    """
+    Splits 'text' into (emittable, carry), holding back any trailing substring
+    that could be the start of a think tag split across stream chunks.
+    """
+    max_partial = max(len(t) for t in _THINK_TAGS) - 1
+    for k in range(min(len(text), max_partial), 0, -1):
+        suffix = text[-k:]
+        if any(tag.startswith(suffix) for tag in _THINK_TAGS):
+            return text[:-k], suffix
+    return text, ""
+
+
+def _filter_think_stream(text: str, state: dict) -> tuple[str, str]:
+    """
+    Stateful removal of balanced <think>...</think> spans from streamed content.
+
+    Returns (visible_text, reasoning_text). 'state' carries 'in_think' (bool)
+    and 'carry' (str) across chunks so tags split between deltas are handled.
+    Used for the answer portion of a reasoning response (any stray pairs) and
+    for non-reasoning engines as a cheap safety net.
+    """
+    buf = state["carry"] + text
+    state["carry"] = ""
+    visible: list[str] = []
+    reasoning: list[str] = []
+    i = 0
+    while True:
+        if not state["in_think"]:
+            idx = buf.find(_THINK_OPEN, i)
+            if idx == -1:
+                emit, carry = _split_safe(buf[i:])
+                visible.append(emit)
+                state["carry"] = carry
+                break
+            visible.append(buf[i:idx])
+            i = idx + len(_THINK_OPEN)
+            state["in_think"] = True
+        else:
+            idx = buf.find(_THINK_CLOSE, i)
+            if idx == -1:
+                emit, carry = _split_safe(buf[i:])
+                reasoning.append(emit)
+                state["carry"] = carry
+                break
+            reasoning.append(buf[i:idx])
+            i = idx + len(_THINK_CLOSE)
+            state["in_think"] = False
+    return "".join(visible), "".join(reasoning)
+
+
 def _parse_token_counts(
     engine_name: str, response_data: dict
 ) -> tuple[int, int, int, int]:
@@ -186,9 +248,13 @@ def _parse_token_counts(
         return 0, 0, 0, 0
     if engine_name in ["openai", "groq"]:
         if "usage" in response_data:
-            p = response_data["usage"].get("prompt_tokens", 0)
-            c = response_data["usage"].get("completion_tokens", 0)
-            t = response_data["usage"].get("total_tokens", 0)
+            usage = response_data["usage"]
+            p = usage.get("prompt_tokens", 0)
+            c = usage.get("completion_tokens", 0)
+            t = usage.get("total_tokens", 0)
+            # Groq/OpenAI reasoning models report reasoning tokens here.
+            details = usage.get("completion_tokens_details") or {}
+            r = details.get("reasoning_tokens", 0)
     elif engine_name == "gemini":
         usage = response_data.get("usageMetadata", {})
         p = usage.get("promptTokenCount", 0)
@@ -204,10 +270,43 @@ def _parse_token_counts(
 
 
 def _process_stream(
-    engine: str, response: requests.Response, print_stream: bool = True
+    engine: str,
+    response: requests.Response,
+    print_stream: bool = True,
+    show_reasoning: bool = False,
+    reasoning_expected: bool = False,
 ) -> tuple[str, dict]:
-    """Processes a streaming API response."""
+    """
+    Processes a streaming API response.
+
+    When 'reasoning_expected' is True (Groq reasoning models), leading content
+    is buffered until the first </think> so chain-of-thought is separated from
+    the answer even when the model omits the opening <think> tag (a known
+    Groq/qwen quirk). The reasoning is shown only under /debug (show_reasoning);
+    it never enters the returned response that becomes conversation history.
+    """
     full_response, p, c, r, t = "", 0, 0, 0, 0
+    think_state = {"in_think": False, "carry": ""}
+    answer_mode = False  # reasoning prefix resolved? (reasoning models only)
+    prefix_buffer = ""   # ambiguous leading content held until </think> or EOS
+
+    def _emit_answer(text: str) -> None:
+        """Filters any stray balanced think pairs, prints, and records answer."""
+        nonlocal full_response
+        visible, think = _filter_think_stream(text, think_state)
+        if think and show_reasoning and print_stream:
+            sys.stdout.write(f"{REASONING_COLOR}{think}{RESET_COLOR}")
+        if visible and print_stream:
+            sys.stdout.write(visible)
+        if (visible or think) and print_stream:
+            sys.stdout.flush()
+        full_response += visible
+
+    def _show_reasoning(text: str) -> None:
+        if text and show_reasoning and print_stream:
+            sys.stdout.write(f"{REASONING_COLOR}{text}{RESET_COLOR}")
+            sys.stdout.flush()
+
     try:
         for chunk in response.iter_lines():
             if not chunk:
@@ -219,21 +318,60 @@ def _process_stream(
                         break
                     try:
                         data = json.loads(decoded_chunk.split("data: ", 1)[1])
-                        if (
-                            "choices" in data
-                            and data["choices"]
-                            and data["choices"][0].get("delta", {}).get("content")
-                        ):
-                            text_chunk = data["choices"][0]["delta"]["content"]
-                            if print_stream:
-                                sys.stdout.write(text_chunk)
-                                sys.stdout.flush()
-                            full_response += text_chunk
-                        if "usage" in data and data["usage"]:
-                            p = data["usage"].get("prompt_tokens", 0)
-                            c = data["usage"].get("completion_tokens", 0)
-                            t = data["usage"].get("total_tokens", 0)
-                    except json.JSONDecodeError:
+                        choices = data.get("choices") or []
+                        delta = choices[0].get("delta", {}) if choices else {}
+
+                        reasoning_chunk = delta.get("reasoning") or delta.get(
+                            "reasoning_content"
+                        )
+                        content_chunk = delta.get("content")
+
+                        if not reasoning_expected:
+                            # Standard path: stream content directly.
+                            _show_reasoning(reasoning_chunk)
+                            if content_chunk:
+                                if print_stream:
+                                    sys.stdout.write(content_chunk)
+                                    sys.stdout.flush()
+                                full_response += content_chunk
+                        else:
+                            # Reasoning model. Reasoning may arrive as a separate
+                            # field, or inline as <think>...</think> (possibly
+                            # with the opening tag missing).
+                            if reasoning_chunk:
+                                _show_reasoning(reasoning_chunk)
+                                # Separate-field reasoning => content is clean.
+                                if not answer_mode and prefix_buffer:
+                                    _emit_answer(prefix_buffer)
+                                    prefix_buffer = ""
+                                    answer_mode = True
+                            if content_chunk:
+                                if answer_mode:
+                                    _emit_answer(content_chunk)
+                                else:
+                                    prefix_buffer += content_chunk
+                                    idx = prefix_buffer.find(_THINK_CLOSE)
+                                    if idx != -1:
+                                        reasoning_part = prefix_buffer[:idx].replace(
+                                            _THINK_OPEN, ""
+                                        )
+                                        remainder = prefix_buffer[
+                                            idx + len(_THINK_CLOSE):
+                                        ]
+                                        _show_reasoning(reasoning_part)
+                                        prefix_buffer = ""
+                                        answer_mode = True
+                                        if remainder:
+                                            _emit_answer(remainder)
+
+                        usage = data.get("usage")
+                        if usage:
+                            p = usage.get("prompt_tokens", 0)
+                            c = usage.get("completion_tokens", 0)
+                            t = usage.get("total_tokens", 0)
+                            details = usage.get("completion_tokens_details") or {}
+                            r = details.get("reasoning_tokens", 0)
+                    except (json.JSONDecodeError, IndexError):
                         continue
             elif engine == "gemini":
                 try:
@@ -289,6 +427,27 @@ def _process_stream(
                 f"\n{SYSTEM_MSG}--> Stream interrupted by network/API error: {e}{RESET_COLOR}"
             )
         log.warning("Stream processing error: %s", e)
+
+    # No </think> ever arrived: the reasoning model answered without thinking,
+    # so the buffered prefix is the actual answer.
+    if reasoning_expected and not answer_mode and prefix_buffer:
+        if print_stream:
+            sys.stdout.write(prefix_buffer)
+            sys.stdout.flush()
+        full_response += prefix_buffer
+        prefix_buffer = ""
+
+    # Flush any partial-tag carry held back by the answer-portion filter.
+    if think_state["carry"] and not think_state["in_think"]:
+        if print_stream:
+            sys.stdout.write(think_state["carry"])
+            sys.stdout.flush()
+        full_response += think_state["carry"]
+
+    # Final guard: strip any complete balanced think span that slipped through
+    # (no-op on content with no think tags).
+    full_response = re.sub(r"<think>.*?</think>", "", full_response, flags=re.DOTALL)
+
     tokens = {"prompt": p, "completion": c, "reasoning": r, "total": t}
     return full_response, tokens
 
@@ -303,6 +462,7 @@ def perform_chat_request(
     debug_active: bool = False,
     session_raw_logs: list | None = None,
     print_stream: bool = True,
+    show_reasoning: bool = False,
 ) -> tuple[str, dict]:
     """Executes a single chat request and returns the response text and token dictionary."""
     url = engine.get_chat_url(model, stream)
@@ -328,10 +488,27 @@ def perform_chat_request(
         return "", {}
 
     if stream:
-        return _process_stream(engine.name, response_obj, print_stream=print_stream)
+        reasoning_expected = engine.name == "groq" and _is_groq_reasoning_model(model)
+        return _process_stream(
+            engine.name,
+            response_obj,
+            print_stream=print_stream,
+            show_reasoning=show_reasoning,
+            reasoning_expected=reasoning_expected,
+        )
 
     response_data = response_obj
     assistant_response = engine.parse_chat_response(response_data)
+
+    # Reveal reasoning on non-streaming requests when /debug is active. Groq's
+    # 'parsed' mode places it in message.reasoning, separate from content.
+    if show_reasoning and print_stream and engine.name in ("openai", "groq"):
+        choices = response_data.get("choices") or []
+        message = choices[0].get("message", {}) if choices else {}
+        reasoning_text = message.get("reasoning")
+        if reasoning_text:
+            print(f"{REASONING_COLOR}{reasoning_text}{RESET_COLOR}")
+
     p, c, r, t = _parse_token_counts(engine.name, response_data)
     tokens = {"prompt": p, "completion": c, "reasoning": r, "total": t}
     return assistant_response, tokens

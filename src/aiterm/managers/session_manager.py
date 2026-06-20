@@ -1,6 +1,6 @@
 # aiterm/managers/session_manager.py
 # aiterm: A command-line interface for interacting with AI models.
-# Copyright (C) 2025 Dank A. Saurus
+# Copyright (C) 2025-2026 Dank A. Saurus
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -96,6 +96,7 @@ class SessionManager:
             max_tokens=self.state.max_tokens,
             stream=self.state.stream_active,
             session_raw_logs=srl_list,
+            show_reasoning=self.state.debug_active,
         )
 
         if not self.state.stream_active:
@@ -156,6 +157,7 @@ class SessionManager:
             self._assemble_full_system_prompt(),
             self.state.max_tokens,
             self.state.stream_active,
+            show_reasoning=self.state.debug_active,
         )
         if not self.state.stream_active:
             print(response, end="")
