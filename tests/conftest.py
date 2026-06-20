@@ -12,7 +12,7 @@ import requests
 from aiterm import config  # Import config to access LOG_DIRECTORY
 from aiterm import settings as app_settings
 from aiterm.chat_ui import MultiChatUI, SingleChatUI
-from aiterm.engine import AnthropicEngine, GeminiEngine, OpenAIEngine
+from aiterm.engine import AnthropicEngine, GeminiEngine, OpenAICompatibleEngine
 from aiterm.managers.multichat_manager import MultiChatSession
 from aiterm.managers.session_manager import SessionManager
 from aiterm.session_state import MultiChatSessionState, SessionState
@@ -23,8 +23,13 @@ MOCK_SETTINGS = {
     "default_engine": "gemini",
     "default_gemini_model": "gemini-default",
     "default_openai_chat_model": "openai-default",
+    "default_groq_chat_model": "groq-default",
     "default_openai_image_model": "dall-e-default",
     "default_anthropic_model": "claude-default",
+    "helper_model_gemini": "gemini-helper",
+    "helper_model_openai": "openai-helper",
+    "helper_model_groq": "groq-helper",
+    "helper_model_anthropic": "claude-helper",
     "default_max_tokens": 1000,
     "stream": True,
     "memory_enabled": True,
@@ -43,8 +48,14 @@ def mock_settings_patcher():
 
 @pytest.fixture
 def mock_openai_engine():
-    """Provides a mock OpenAIEngine instance."""
-    return OpenAIEngine(api_key="fake_openai_key")
+    """Provides a mock OpenAICompatibleEngine instance configured for OpenAI."""
+    return OpenAICompatibleEngine("openai", "fake_openai_key")
+
+
+@pytest.fixture
+def mock_groq_engine():
+    """Provides a mock OpenAICompatibleEngine instance configured for Groq."""
+    return OpenAICompatibleEngine("groq", "fake_groq_key")
 
 
 @pytest.fixture
@@ -77,7 +88,7 @@ def mock_session_state(mock_gemini_engine):
 
 @pytest.fixture
 def mock_openai_session_state(mock_openai_engine):
-    """Provides a SessionState instance using OpenAIEngine."""
+    """Provides a SessionState instance using an OpenAI-compatible engine."""
     return SessionState(
         engine=mock_openai_engine,
         model="gpt-4o-mini",

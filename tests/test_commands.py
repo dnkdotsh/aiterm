@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from aiterm import api_client, commands, config
-from aiterm.engine import GeminiEngine, OpenAIEngine
+from aiterm.engine import GeminiEngine, OpenAICompatibleEngine
 from aiterm.managers.context_manager import Attachment
 from aiterm.personas import Persona
 from aiterm.utils.message_builder import (
@@ -105,7 +105,7 @@ class TestCommands:
     def test_handle_engine_switch(self, mocker, mock_openai_session_manager, capsys):
         """Tests a successful switch of the AI engine."""
         # Initial state is openai engine from fixture
-        assert isinstance(mock_openai_session_manager.state.engine, OpenAIEngine)
+        assert isinstance(mock_openai_session_manager.state.engine, OpenAICompatibleEngine)
 
         # Mock dependencies for the switch
         mocker.patch("aiterm.api_client.check_api_keys", return_value="fake_gemini_key")
@@ -138,7 +138,7 @@ class TestCommands:
         commands.handle_engine(["gemini"], mock_openai_session_manager)
 
         # State should not change
-        assert isinstance(mock_openai_session_manager.state.engine, OpenAIEngine)
+        assert isinstance(mock_openai_session_manager.state.engine, OpenAICompatibleEngine)
         captured = capsys.readouterr()
         assert "Switch failed: No key" in captured.out
 
@@ -210,7 +210,7 @@ class TestCommands:
         self, mocker, mock_session_manager, fake_fs, capsys
     ):
         """Tests that an OSError during file save is handled."""
-        mocker.patch("os.rename", side_effect=OSError("Permission denied"))
+        mocker.patch("os.replace", side_effect=OSError("Permission denied"))
         mock_history = InMemoryHistory()
         result = commands.handle_save(
             ["my-session"], mock_session_manager, mock_history

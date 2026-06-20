@@ -18,7 +18,7 @@ def mock_bootstrap_deps(mocker):
     mocker.patch("shutil.copy2")
     # Mock user input functions
     mocker.patch("builtins.input", return_value="y")
-    mocker.patch("getpass.getpass", side_effect=["test_openai_key", "test_gemini_key"])
+    mocker.patch("getpass.getpass", side_effect=["test_openai_key", "test_gemini_key", "test_groq_key"])
     # Mock persona creation as it's tested elsewhere
     mocker.patch("aiterm.bootstrap.persona_manager.create_default_persona_if_missing")
 
@@ -87,6 +87,7 @@ class TestBootstrap:
         env_content = config.DOTENV_FILE.read_text()
         assert 'OPENAI_API_KEY="test_openai_key"' in env_content
         assert 'GEMINI_API_KEY="test_gemini_key"' in env_content
+        assert 'GROQ_API_KEY="test_groq_key"' in env_content
         if sys.platform != "win32":
             assert os.stat(config.DOTENV_FILE).st_mode & 0o777 == 0o600
 

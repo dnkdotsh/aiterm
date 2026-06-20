@@ -1,4 +1,4 @@
-# src/aiterm/test_managers/test_multichat_manager.py
+# src/aiterm/tests/managers/test_multichat_manager.py
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -134,7 +134,7 @@ class TestMultiChatManager:
         assert len(mock_multichat_session.state.shared_history) == 2
         user_msg = mock_multichat_session.state.shared_history[0]
 
-        assert "Director to Openai: Please continue" in str(user_msg)
+        assert "Director to OpenAI: Please continue" in str(user_msg)
         assert mock_multichat_session.state.total_prompt_tokens == 2
         assert mock_multichat_session.state.total_completion_tokens == 1
 

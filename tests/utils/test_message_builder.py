@@ -15,18 +15,20 @@ from aiterm.utils.message_builder import (
 class TestMessageBuilder:
     """Test suite for message construction and parsing utilities."""
 
-    def test_construct_user_message_openai_text_only(self):
-        """Tests building an OpenAI user message with only text."""
-        msg = construct_user_message("openai", "Hello", [])
+    @pytest.mark.parametrize("engine_name", ["openai", "groq"])
+    def test_construct_user_message_openai_compatible_text_only(self, engine_name):
+        """Tests building an OpenAI-compatible user message with only text."""
+        msg = construct_user_message(engine_name, "Hello", [])
         assert msg == {
             "role": "user",
             "content": [{"type": "text", "text": "Hello"}],
         }
 
-    def test_construct_user_message_openai_with_image(self):
-        """Tests building an OpenAI user message with text and an image."""
+    @pytest.mark.parametrize("engine_name", ["openai", "groq"])
+    def test_construct_user_message_openai_compatible_with_image(self, engine_name):
+        """Tests building an OpenAI-compatible user message with text and an image."""
         image_data = [{"mime_type": "image/png", "data": "base64data"}]
-        msg = construct_user_message("openai", "Look at this", image_data)
+        msg = construct_user_message(engine_name, "Look at this", image_data)
         assert msg == {
             "role": "user",
             "content": [
@@ -74,9 +76,10 @@ class TestMessageBuilder:
             ],
         }
 
-    def test_construct_assistant_message_openai(self):
-        """Tests building an OpenAI assistant message."""
-        msg = construct_assistant_message("openai", "I am a bot.")
+    @pytest.mark.parametrize("engine_name", ["openai", "groq"])
+    def test_construct_assistant_message_openai_compatible(self, engine_name):
+        """Tests building an OpenAI-compatible assistant message."""
+        msg = construct_assistant_message(engine_name, "I am a bot.")
         assert msg == {"role": "assistant", "content": "I am a bot."}
 
     def test_construct_assistant_message_anthropic(self):
